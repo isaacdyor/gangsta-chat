@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Wordware Apps Viewer</title>
+    <style>
+      body {
+        width: 300px;
+        padding: 10px;
+      }
+      button {
+        margin: 5px 0;
+      }
+      #result {
+        margin-top: 10px;
+        white-space: pre-wrap;
+      }
+      #runStatus {
+        margin-top: 10px;
+        font-weight: bold;
+      }
+      .success {
+        color: green;
+      }
+      .failure {
+        color: red;
+      }
+      #checkStatus {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Wordware Apps Viewer</h1>
+    <button id="fetchApps">Fetch Apps</button>
+    <div id="appList"></div>
+    <h2>Run App</h2>
+    <button id="runApp">Run App</button>
+    <button id="checkStatus">Check Run Status</button>
+    <div id="runStatus"></div>
+    <div id="result"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
