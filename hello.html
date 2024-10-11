@@ -1,43 +1,92 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wordware Apps Viewer</title>
     <style>
       body {
-        width: 300px;
-        padding: 10px;
+        font-family: "Arial", sans-serif;
+        background-color: #121212;
+        color: #e0e0e0;
+        margin: 0;
+        padding: 20px;
+        width: 400px;
+        box-sizing: border-box;
       }
-      button {
-        margin: 5px 0;
+      .container {
+        background-color: #121212;
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+      h1 {
+        margin-top: 0;
+        margin-bottom: 24px;
+        font-size: 24px;
+        color: #ffffff;
+        font-weight: 600;
+        text-align: center;
+      }
+      #scrapeButton {
+        width: 100%;
+        padding: 12px;
+        background-color: #ffffff;
+        color: #121212;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s, transform 0.1s;
+      }
+      #scrapeButton:hover {
+        background-color: #f0f0f0;
+      }
+      #scrapeButton:active {
+        transform: scale(0.98);
+      }
+      #scrapeButton:disabled {
+        background-color: #d0d0d0;
+        color: #606060;
+        cursor: not-allowed;
+      }
+      .loader {
+        border: 3px solid #333333;
+        border-top: 3px solid #d0d0d0;
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
       }
       #result {
-        margin-top: 10px;
+        margin-top: 20px;
+        padding: 15px;
         white-space: pre-wrap;
-      }
-      #runStatus {
-        margin-top: 10px;
-        font-weight: bold;
-      }
-      .success {
-        color: green;
-      }
-      .failure {
-        color: red;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        max-height: 300px;
+        overflow-y: auto;
+        color: #cccccc;
       }
     </style>
   </head>
   <body>
-    <h1>Wordware Apps Viewer</h1>
-
-    <h2>Run App</h2>
-    <button id="runApp">Scrape Contact Info</button>
-    <div id="runStatus"></div>
-    <div id="result"></div>
-
-    <div id="result-div" style="width: 500px">
-      <code id="result"></code>
+    <div class="container">
+      <h1>Wordware Contact Scraper</h1>
+      <button id="scrapeButton">Scrape Contacts</button>
+      <div id="result"></div>
     </div>
-
     <script src="popup.js"></script>
   </body>
 </html>

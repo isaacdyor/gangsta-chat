@@ -11,8 +11,7 @@ let lastRunId = null;
 
 // DOM Elements
 const elements = {
-  runApp: null,
-  status: null,
+  scrapeButton: null,
   result: null,
 };
 
@@ -20,16 +19,14 @@ const elements = {
 document.addEventListener("DOMContentLoaded", initializeApp);
 
 function initializeApp() {
-  elements.runApp = document.getElementById("runApp");
-  elements.status = document.getElementById("runStatus");
+  elements.scrapeButton = document.getElementById("scrapeButton");
   elements.result = document.getElementById("result");
 
-  elements.runApp.addEventListener("click", runApp);
+  elements.scrapeButton.addEventListener("click", runApp);
 }
 
 async function runApp() {
-  updateStatus("Initiating app run...");
-  elements.result.textContent = "";
+  setScrapingState();
 
   try {
     const pageContent = await getPageContent();
@@ -94,7 +91,6 @@ async function initiateApiRun(pageContent) {
 
     if (runResponse && runResponse.runId) {
       lastRunId = runResponse.runId;
-      updateStatus("Run initiated. Checking status...");
       await pollRunStatus(lastRunId);
     } else {
       throw new Error("No runId received in the response");
@@ -110,13 +106,10 @@ async function pollRunStatus(runId) {
       const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
 
       if (statusResponse) {
-        updateStatus(`Run Status: ${statusResponse.status || "Unknown"}`);
-
         if (statusResponse.status === "COMPLETE") {
-          elements.status.className = "success";
-          console.log(statusResponse);
-          elements.result.textContent =
-            statusResponse.outputs?.answer || "Answer not found in the output.";
+          setResultsState(
+            statusResponse.outputs?.answer || "No results found."
+          );
           break;
         } else if (statusResponse.status === "FAILED") {
           throw new Error("The run failed. Please try again.");
@@ -164,13 +157,21 @@ function sendMessage(message) {
   });
 }
 
-function updateStatus(message, className = "") {
-  elements.status.textContent = message;
-  elements.status.className = className;
+function setScrapingState() {
+  elements.scrapeButton.disabled = true;
+  elements.scrapeButton.innerHTML = '<span class="loader"></span> Scraping...';
+  elements.result.textContent = "";
+}
+
+function setResultsState(results) {
+  elements.scrapeButton.disabled = false;
+  elements.scrapeButton.textContent = "Scrape Contacts";
+  elements.result.textContent = results;
 }
 
 function handleError(message, error) {
   console.error(message, error);
-  updateStatus(message, "failure");
+  elements.scrapeButton.disabled = false;
+  elements.scrapeButton.textContent = "Scrape Contacts";
   elements.result.textContent = `Error: ${error.message}`;
 }
