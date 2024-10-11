@@ -1,131 +1,106 @@
-document.addEventListener("DOMContentLoaded", function () {
-  const runAppButton = document.getElementById("runApp");
-  runAppButton.addEventListener("click", runApp);
-
-  document.getElementById("test").addEventListener("click", () => {
-    console.log("Popup DOM fully loaded and parsed");
-
-    function modifyDOM() {
-      //You can play with your DOM here or check URL against your regex
-      console.log("Tab script:");
-      console.log(document.body);
-      return document.body.innerHTML;
-    }
-
-    //We have permission to access the activeTab, so we can call chrome.tabs.executeScript:
-    chrome.tabs.executeScript(
-      {
-        code: "(" + modifyDOM + ")();", //argument here is a string but function.toString() returns function's code
-      },
-      (results) => {
-        //Here we have just the innerHTML and not DOM structure
-        console.log("Popup script:");
-        console.log(results[0]);
-      }
-    );
-  });
-});
-
-const apiKey = "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT";
-const orgSlug = "isaac-dyor-d74b42";
-const appSlug = "3e4c59f3-7289-4bbd-b00d-517546444317";
-const version = "latest";
+// Configuration constants
+const CONFIG = {
+  apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
+  orgSlug: "isaac-dyor-d74b42",
+  appSlug: "3e4c59f3-7289-4bbd-b00d-517546444317",
+  version: "latest",
+  apiBaseUrl: "https://api.wordware.ai/v1alpha",
+};
 
 let lastRunId = null;
 
+// DOM Elements
+const elements = {
+  runApp: null,
+  status: null,
+  result: null,
+};
+
+// Initialize the application
+document.addEventListener("DOMContentLoaded", initializeApp);
+
+function initializeApp() {
+  elements.runApp = document.getElementById("runApp");
+  elements.status = document.getElementById("runStatus");
+  elements.result = document.getElementById("result");
+
+  elements.runApp.addEventListener("click", runApp);
+}
+
 async function runApp() {
-  const statusElement = document.getElementById("runStatus");
-  const resultElement = document.getElementById("result");
-  statusElement.textContent = "Initiating app run...";
-  statusElement.className = "";
-  resultElement.textContent = "";
+  updateStatus("Initiating app run...");
+  elements.result.textContent = "";
 
   try {
-    const runResponse = await sendMessage({
-      type: "API_REQUEST",
-      url: `https://api.wordware.ai/v1alpha/apps/${orgSlug}/${appSlug}/${version}/runs`,
-      options: {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+    const runResponse = await sendApiRequest(
+      "POST",
+      `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
+      {
+        inputs: {
+          page_contents:
+            "Hello, World! i am isaac the king of the world. I have a dream to be the king of the world and i am the king of the world but one day i will be the queen of the world",
         },
-        body: JSON.stringify({
-          inputs: {
-            page_contents:
-              "Hello, World! i am isaac the king of the world. I have a dream to be the king of the world and i am the king of the world but one day i will be the queen of the world",
-          },
-        }),
-      },
-    });
+      }
+    );
 
     if (runResponse && runResponse.runId) {
       lastRunId = runResponse.runId;
-      statusElement.textContent = "Run initiated. Checking status...";
+      updateStatus("Run initiated. Checking status...");
       await pollRunStatus(lastRunId);
     } else {
       throw new Error("No runId received in the response");
     }
   } catch (error) {
-    console.error("Error:", error);
-    statusElement.textContent = "Failure: Error occurred";
-    statusElement.className = "failure";
-    resultElement.textContent = "Error: " + error.message;
+    handleError("Error occurred", error);
   }
 }
 
 async function pollRunStatus(runId) {
-  const statusElement = document.getElementById("runStatus");
-  const resultElement = document.getElementById("result");
-
   try {
     while (true) {
-      const statusResponse = await sendMessage({
-        type: "API_REQUEST",
-        url: `https://api.wordware.ai/v1alpha/runs/${runId}`,
-        options: {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-        },
-      });
+      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
 
       if (statusResponse) {
+        updateStatus(`Run Status: ${statusResponse.status || "Unknown"}`);
+
         if (statusResponse.status === "COMPLETE") {
-          statusElement.textContent = "Run Status: COMPLETE";
-          statusElement.className = "success";
-          if (statusResponse.outputs && statusResponse.outputs.summarize) {
-            resultElement.textContent = statusResponse.outputs.summarize;
-          } else {
-            resultElement.textContent =
-              "Summarization not found in the output.";
-          }
-          break; // Exit the loop when the status is COMPLETE
+          elements.status.className = "success";
+          elements.result.textContent =
+            statusResponse.outputs?.summarize ||
+            "Summarization not found in the output.";
+          break;
         } else if (statusResponse.status === "FAILED") {
-          statusElement.textContent = "Run Status: FAILED";
-          statusElement.className = "failure";
-          resultElement.textContent = "The run failed. Please try again.";
-          break; // Exit the loop if the status is FAILED
-        } else {
-          statusElement.textContent = `Run Status: ${
-            statusResponse.status || "Unknown"
-          }`;
-          // Don't update the result element for non-COMPLETE statuses
+          throw new Error("The run failed. Please try again.");
         }
       } else {
         throw new Error("Unable to fetch run status");
       }
 
-      // Wait for 5 seconds before the next poll
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   } catch (error) {
-    console.error("Error checking run status:", error);
-    statusElement.textContent = "Failure: Error occurred while checking status";
-    statusElement.className = "failure";
-    resultElement.textContent = "Error: " + error.message;
+    handleError("Error occurred while checking status", error);
   }
+}
+
+function sendApiRequest(method, endpoint, body = null) {
+  const options = {
+    method,
+    headers: {
+      Authorization: `Bearer ${CONFIG.apiKey}`,
+      "Content-Type": "application/json",
+    },
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  return sendMessage({
+    type: "API_REQUEST",
+    url: `${CONFIG.apiBaseUrl}/${endpoint}`,
+    options,
+  });
 }
 
 function sendMessage(message) {
@@ -138,4 +113,15 @@ function sendMessage(message) {
       }
     });
   });
+}
+
+function updateStatus(message, className = "") {
+  elements.status.textContent = message;
+  elements.status.className = className;
+}
+
+function handleError(message, error) {
+  console.error(message, error);
+  updateStatus(message, "failure");
+  elements.result.textContent = `Error: ${error.message}`;
 }
