@@ -52,6 +52,9 @@ function getPageContent() {
             target: { tabId: tab.id },
             func: getTextContent,
           })
+          .then(([{ result: textContent }]) => {
+            resolve(textContent);
+          })
           .catch((err) => reject(err));
       } else {
         reject(new Error("No active tab found"));
@@ -122,7 +125,7 @@ async function pollRunStatus(runId) {
         throw new Error("Unable to fetch run status");
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
   } catch (error) {
     handleError("Error occurred while checking status", error);
