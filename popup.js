@@ -2,7 +2,7 @@
 const CONFIG = {
   apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
   orgSlug: "isaac-dyor-d74b42",
-  appSlug: "3e4c59f3-7289-4bbd-b00d-517546444317",
+  appSlug: "318cfdc8-ebf9-46a6-beb3-3b1953926f93",
   version: "latest",
   apiBaseUrl: "https://api.wordware.ai/v1alpha",
 };
@@ -32,13 +32,59 @@ async function runApp() {
   elements.result.textContent = "";
 
   try {
+    const pageContent = await getPageContent();
+    if (pageContent) {
+      await initiateApiRun(pageContent);
+    } else {
+      throw new Error("Failed to retrieve page content");
+    }
+  } catch (error) {
+    handleError("Error occurred", error);
+  }
+}
+
+function getPageContent() {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (tab) {
+        chrome.scripting
+          .executeScript({
+            target: { tabId: tab.id },
+            func: getTextContent,
+          })
+          .catch((err) => reject(err));
+      } else {
+        reject(new Error("No active tab found"));
+      }
+    });
+  });
+}
+
+// Function to extract text content from the page
+function getTextContent() {
+  const tempElement = document.createElement("div");
+  tempElement.innerHTML = document.body.innerHTML;
+
+  // Remove script and style elements
+  ["script", "style"].forEach((tag) => {
+    const elements = tempElement.getElementsByTagName(tag);
+    while (elements[0]) elements[0].remove();
+  });
+
+  // Get the text content and remove extra whitespace
+  return (tempElement.textContent || tempElement.innerText)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function initiateApiRun(pageContent) {
+  try {
     const runResponse = await sendApiRequest(
       "POST",
       `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
       {
         inputs: {
-          page_contents:
-            "Hello, World! i am isaac the king of the world. I have a dream to be the king of the world and i am the king of the world but one day i will be the queen of the world",
+          company_list: pageContent,
         },
       }
     );
@@ -51,7 +97,7 @@ async function runApp() {
       throw new Error("No runId received in the response");
     }
   } catch (error) {
-    handleError("Error occurred", error);
+    throw error;
   }
 }
 
@@ -65,9 +111,9 @@ async function pollRunStatus(runId) {
 
         if (statusResponse.status === "COMPLETE") {
           elements.status.className = "success";
+          console.log(statusResponse);
           elements.result.textContent =
-            statusResponse.outputs?.summarize ||
-            "Summarization not found in the output.";
+            statusResponse.outputs?.answer || "Answer not found in the output.";
           break;
         } else if (statusResponse.status === "FAILED") {
           throw new Error("The run failed. Please try again.");
