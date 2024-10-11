@@ -1,28 +1,23 @@
 document.addEventListener("DOMContentLoaded", function () {
   const runAppButton = document.getElementById("runApp");
   runAppButton.addEventListener("click", runApp);
-
-  // Add new button for checking status
-  const checkStatusButton = document.getElementById("checkStatus");
-  checkStatusButton.addEventListener("click", checkLastRunStatus);
 });
 
 const apiKey = "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT";
 const orgSlug = "isaac-dyor-d74b42";
 const appSlug = "3e4c59f3-7289-4bbd-b00d-517546444317";
-const version = "latest"; // You can change this if you want to use a specific version
+const version = "latest";
 
-let lastRunId = null; // Store the last run ID
+let lastRunId = null;
 
 async function runApp() {
-  const resultElement = document.getElementById("result");
   const statusElement = document.getElementById("runStatus");
+  const resultElement = document.getElementById("result");
   statusElement.textContent = "Initiating app run...";
   statusElement.className = "";
   resultElement.textContent = "";
 
   try {
-    // First API call to initiate the run
     const runResponse = await sendMessage({
       type: "API_REQUEST",
       url: `https://api.wordware.ai/v1alpha/apps/${orgSlug}/${appSlug}/${version}/runs`,
@@ -44,7 +39,7 @@ async function runApp() {
     if (runResponse && runResponse.runId) {
       lastRunId = runResponse.runId;
       statusElement.textContent = "Run initiated. Checking status...";
-      await checkRunStatus(lastRunId);
+      await pollRunStatus(lastRunId);
     } else {
       throw new Error("No runId received in the response");
     }
@@ -56,51 +51,57 @@ async function runApp() {
   }
 }
 
-async function checkRunStatus(runId) {
+async function pollRunStatus(runId) {
   const statusElement = document.getElementById("runStatus");
   const resultElement = document.getElementById("result");
 
   try {
-    const statusResponse = await sendMessage({
-      type: "API_REQUEST",
-      url: `https://api.wordware.ai/v1alpha/runs/${runId}`,
-      options: {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
+    while (true) {
+      const statusResponse = await sendMessage({
+        type: "API_REQUEST",
+        url: `https://api.wordware.ai/v1alpha/runs/${runId}`,
+        options: {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
         },
-      },
-    });
+      });
 
-    if (statusResponse) {
-      statusElement.textContent = `Run Status: ${
-        statusResponse.status || "Unknown"
-      }`;
-      statusElement.className =
-        statusResponse.status === "completed" ? "success" : "";
-      resultElement.textContent = JSON.stringify(statusResponse, null, 2);
-    } else {
-      statusElement.textContent = "Unable to fetch run status";
-      statusElement.className = "failure";
-      resultElement.textContent =
-        "Failed to fetch run status. Response:\n\n" +
-        JSON.stringify(statusResponse, null, 2);
+      if (statusResponse) {
+        if (statusResponse.status === "COMPLETE") {
+          statusElement.textContent = "Run Status: COMPLETE";
+          statusElement.className = "success";
+          if (statusResponse.outputs && statusResponse.outputs.summarize) {
+            resultElement.textContent = statusResponse.outputs.summarize;
+          } else {
+            resultElement.textContent =
+              "Summarization not found in the output.";
+          }
+          break; // Exit the loop when the status is COMPLETE
+        } else if (statusResponse.status === "FAILED") {
+          statusElement.textContent = "Run Status: FAILED";
+          statusElement.className = "failure";
+          resultElement.textContent = "The run failed. Please try again.";
+          break; // Exit the loop if the status is FAILED
+        } else {
+          statusElement.textContent = `Run Status: ${
+            statusResponse.status || "Unknown"
+          }`;
+          // Don't update the result element for non-COMPLETE statuses
+        }
+      } else {
+        throw new Error("Unable to fetch run status");
+      }
+
+      // Wait for 5 seconds before the next poll
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   } catch (error) {
     console.error("Error checking run status:", error);
     statusElement.textContent = "Failure: Error occurred while checking status";
     statusElement.className = "failure";
     resultElement.textContent = "Error: " + error.message;
-  }
-}
-
-function checkLastRunStatus() {
-  if (lastRunId) {
-    checkRunStatus(lastRunId);
-  } else {
-    const statusElement = document.getElementById("runStatus");
-    statusElement.textContent = "No previous run to check";
-    statusElement.className = "failure";
   }
 }
 

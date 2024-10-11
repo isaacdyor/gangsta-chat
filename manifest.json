@@ -1,14 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Wordware Apps Viewer",
-  "description": "Fetches and displays Wordware Apps",
+  "description": "Fetches and displays Wordware Apps, and summarizes webpage content",
   "version": "1.0",
-  "permissions": [],
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://api.wordware.ai/"],
   "action": {
     "default_popup": "hello.html"
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
 }
