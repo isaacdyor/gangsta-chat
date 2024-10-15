@@ -78,24 +78,10 @@ function restoreAppState() {
     );
     if (app) {
       displayAppDetail(app, appState.orgSlug, appState.appSlug);
-
-      // Update input fields with previously selected content
-      if (Array.isArray(app.inputs)) {
-        app.inputs.forEach((input) => {
-          const inputElement = document.getElementById(input.name);
-          const badgeElement = document.getElementById(`badge-${input.name}`);
-          if (inputElement && badgeElement && selectedContent[input.name]) {
-            inputElement.value = selectedContent[input.name];
-            badgeElement.style.display = "inline-flex";
-          }
-        });
-      }
-    } else {
-      showHomeView();
+      return true; // App state was restored
     }
-  } else {
-    showHomeView();
   }
+  return false; // No app state to restore
 }
 
 // Initialize the application when the DOM is fully loaded
@@ -156,11 +142,14 @@ function initializeApp() {
   // Add event listener for theme toggle
   themeToggle.addEventListener("click", toggleTheme);
 
-  // Replace the existing app state restoration code with this:
-  restoreAppState();
+  // Try to restore the app state
+  const appStateRestored = restoreAppState();
 
-  // Show home view by default
-  showHomeView();
+  // If no app state was restored, show the home view and clear any stale app state
+  if (!appStateRestored) {
+    localStorage.removeItem("currentAppState");
+    showHomeView();
+  }
 }
 
 function showHomeView() {
@@ -282,8 +271,8 @@ async function getApps() {
         const latestVersion = versions[0];
         return {
           ...app,
+          ...latestVersion, // This will include inputs, description, and other version-specific details
           title: latestVersion.title || app.appSlug,
-          description: latestVersion.description,
         };
       })
     );
@@ -346,6 +335,10 @@ async function handleAppClick(event) {
       apiKey
     );
     const latestVersion = versions[0];
+
+    // Save the current app state before displaying the app detail
+    saveAppState(orgSlug, appSlug);
+
     displayAppDetail(latestVersion, orgSlug, appSlug);
   } catch (error) {
     handleError("Error occurred while fetching app details", error);
@@ -353,17 +346,12 @@ async function handleAppClick(event) {
 }
 
 function displayAppDetail(app, orgSlug, appSlug) {
-  // Save the current app state
-  saveAppState(orgSlug, appSlug);
-
   elements.appTitle.textContent = app.title || appSlug;
   elements.appDescription.textContent =
     app.description || "No description available";
 
-  // Update input fields with previously selected content
   const selectedContent = loadSelectedContent();
 
-  // Check if app.inputs exists and is an array
   if (Array.isArray(app.inputs)) {
     elements.appInputs.innerHTML = app.inputs
       .map(
@@ -394,7 +382,6 @@ function displayAppDetail(app, orgSlug, appSlug) {
       )
       .join("");
 
-    // Update input fields with previously selected content
     app.inputs.forEach((input) => {
       const inputElement = document.getElementById(input.name);
       const badgeElement = document.getElementById(`badge-${input.name}`);
@@ -443,6 +430,8 @@ function getInputElement(input) {
 }
 
 function showAppsList() {
+  // Clear the current app state when going back to the app list
+  localStorage.removeItem("currentAppState");
   showHomeView();
 }
 
@@ -516,13 +505,17 @@ async function runApp(app, orgSlug, appSlug) {
     const inputs = {};
     app.inputs.forEach((input) => {
       const inputElement = document.getElementById(input.name);
-      const selectButton = document.querySelector(
-        `.select-page-content[data-input="${input.name}"]`
-      );
+      const badgeElement = document.getElementById(`badge-${input.name}`);
 
-      // Use page content if available, otherwise use input value
-      inputs[input.name] =
-        selectButton.dataset.pageContent || inputElement.value;
+      // Check if the badge is visible (indicating selected content)
+      if (badgeElement.style.display === "inline-flex") {
+        // Use the selected content stored in local storage
+        const selectedContent = loadSelectedContent();
+        inputs[input.name] = selectedContent[input.name] || "";
+      } else {
+        // Use the input value if no content was selected
+        inputs[input.name] = inputElement.value;
+      }
     });
 
     console.log("Sending run request with inputs:", inputs);
