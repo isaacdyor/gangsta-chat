@@ -4,89 +4,428 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wordware Apps Viewer</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 240 10% 3.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 240 10% 3.9%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 240 4.8% 95.9%;
+        --secondary-foreground: 240 5.9% 10%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --accent: 240 4.8% 95.9%;
+        --accent-foreground: 240 5.9% 10%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 5.9% 90%;
+        --input: 240 5.9% 90%;
+        --ring: 240 5.9% 10%;
+        --radius: 0.5rem;
+      }
+
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 3.9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 10% 3.9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 3.7% 15.9%;
+        --input: 240 3.7% 15.9%;
+        --ring: 240 4.9% 83.9%;
+      }
+
       body {
         font-family: "Arial", sans-serif;
-        background-color: #121212;
-        color: #e0e0e0;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
         margin: 0;
-        padding: 10px;
-        width: 400px;
+        padding: 0;
+        width: 600px;
+        height: 600px;
         box-sizing: border-box;
       }
       .container {
-        background-color: #121212;
-        border-radius: 8px;
+        background-color: hsl(var(--card));
+        border-radius: var(--radius);
         padding: 20px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        height: 100%;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
       }
       h1 {
         margin-top: 0;
         margin-bottom: 24px;
         font-size: 24px;
-        color: #ffffff;
+        color: hsl(var(--foreground));
         font-weight: 600;
         text-align: center;
       }
-      #scrapeButton {
-        width: 100%;
-        padding: 12px;
-        background-color: #ffffff;
-        color: #121212;
-        border: none;
-        border-radius: 4px;
-        font-size: 16px;
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        height: 2.5rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        background-color: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        transition: background-color 0.2s;
         cursor: pointer;
-        transition: background-color 0.3s, transform 0.1s;
       }
-      #scrapeButton:hover {
-        background-color: #f0f0f0;
+      button:hover {
+        background-color: hsl(var(--primary) / 0.9);
       }
-      #scrapeButton:active {
-        transform: scale(0.98);
+      button:focus-visible {
+        outline: none;
+        ring: 2px solid hsl(var(--ring));
+        ring-offset: 2px;
       }
-      #scrapeButton:disabled {
-        background-color: #d0d0d0;
-        color: #606060;
-        cursor: not-allowed;
+      button:disabled {
+        opacity: 0.5;
+        pointer-events: none;
       }
-      .loader {
-        border: 3px solid #333333;
-        border-top: 3px solid #d0d0d0;
-        border-radius: 50%;
-        width: 14px;
-        height: 14px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
+      input,
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid hsl(var(--border));
+        border-radius: var(--radius);
+        background-color: hsl(var(--input));
+        color: hsl(var(--foreground));
+        margin-bottom: 10px;
+      }
+      .app-item {
+        background-color: hsl(var(--card));
+        border: 1px solid hsl(var(--border));
+        border-radius: var(--radius);
+        padding: 15px;
+        margin-bottom: 15px;
+        cursor: pointer;
+      }
+      .app-item:hover {
+        background-color: hsl(var(--accent));
+      }
+      #themeToggle {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: none;
+        border: none;
+        color: hsl(var(--foreground));
+        cursor: pointer;
+        padding: 0;
+      }
+      #header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+      #appsList {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+      }
+      #appDetail {
+        display: none;
+      }
+      #apiKeyInput {
+        display: block;
+        margin-bottom: 0;
+        padding: 8px;
+        border: 1px solid hsl(var(--border));
+        border-radius: var(--radius);
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+        width: 100%;
+        box-sizing: border-box;
+      }
+      #themeToggle svg {
+        width: 24px;
+        height: 24px;
+      }
+      .back-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
         margin-right: 10px;
-        vertical-align: middle;
+        color: hsl(var(--foreground));
+        border-radius: var(--radius);
       }
+      .back-button:hover {
+        background-color: hsl(var(--secondary));
+      }
+      .app-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .app-header h2 {
+        font-size: 24px;
+        margin: 0;
+      }
+      #appDescription {
+        margin-bottom: 20px;
+      }
+      #homeView,
+      #appDetailView {
+        display: none;
+      }
+      .input-container {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: flex-start;
+      }
+      .input-container input,
+      .input-container textarea {
+        flex-grow: 1;
+        margin-bottom: 0;
+        background-color: hsl(var(--background));
+        border: 1px solid hsl(var(--border));
+      }
+      .input-container textarea {
+        min-height: 100px;
+        resize: vertical;
+      }
+      .select-page-content {
+        white-space: nowrap;
+        padding: 0.5rem 1rem;
+        height: 2.5rem;
+        align-self: flex-start;
+      }
+      .api-key-container {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+      }
+      #getAppsButton {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 2.5rem;
+        width: 2.5rem;
+      }
+      #getAppsButton svg {
+        width: 24px;
+        height: 24px;
+        color: hsl(var(--foreground));
+      }
+      #runAppButton {
+        margin-top: 1rem;
+      }
+
+      .page-content-badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        padding: 0.25rem 0.625rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        transition: colors 0.2s;
+        background-color: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        margin-top: 0.5rem;
+      }
+
+      .page-content-badge:hover {
+        background-color: hsl(var(--primary) / 0.8);
+      }
+
+      .page-content-badge .remove-badge {
+        margin-left: 0.25rem;
+        cursor: pointer;
+      }
+
+      .apps-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        color: hsl(var(--foreground));
+      }
+
+      /* Add this to create space between the API input and apps list */
+      .api-key-container {
+        margin-bottom: 1.5rem;
+      }
+
       @keyframes spin {
-        0% {
+        from {
           transform: rotate(0deg);
         }
-        100% {
+        to {
           transform: rotate(360deg);
         }
       }
-      #result {
-        margin-top: 20px;
-        padding: 15px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        font-size: 14px;
-        max-height: 300px;
-        overflow-y: auto;
-        color: #cccccc;
+
+      .animate-spin {
+        animation: spin 1s linear infinite;
+      }
+
+      .logo {
+        height: 40px; /* Adjust this value as needed */
+        display: none;
+      }
+
+      .light-mode .logo-light {
+        display: block;
+      }
+
+      .dark-mode .logo-dark {
+        display: block;
+      }
+
+      #header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 10px 0;
       }
     </style>
   </head>
-  <body>
+  <body class="light-mode">
     <div class="container">
-      <h1>Wordware Contact Scraper</h1>
-      <button id="scrapeButton">Scrape Contacts</button>
-      <div id="result"></div>
+      <div id="header">
+        <img
+          src="wordware-logo-light.png"
+          alt="Wordware Logo"
+          class="logo logo-light"
+        />
+        <img
+          src="wordware-logo-dark.png"
+          alt="Wordware Logo"
+          class="logo logo-dark"
+        />
+        <button id="themeToggle">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="light-icon"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" />
+            <path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" />
+            <path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" />
+            <path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" />
+            <path d="m19.07 4.93-1.41 1.41" />
+          </svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="dark-icon"
+            style="display: none"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+        </button>
+      </div>
+      <div id="homeView">
+        <div class="api-key-container">
+          <input
+            type="text"
+            id="apiKeyInput"
+            placeholder="Enter your API key"
+            value="ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT"
+          />
+          <button id="getAppsButton">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-refresh-ccw"
+            >
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 16h5v5" />
+            </svg>
+          </button>
+        </div>
+        <h2 class="apps-title">Your Apps</h2>
+        <ul id="appsList"></ul>
+      </div>
+      <div id="appDetailView">
+        <div class="app-header">
+          <button class="back-button" id="backButton">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-arrow-left"
+            >
+              <path d="m12 19-7-7 7-7" />
+              <path d="M19 12H5" />
+            </svg>
+          </button>
+          <h2 id="appTitle"></h2>
+        </div>
+        <p id="appDescription"></p>
+        <div id="appInputs"></div>
+      </div>
     </div>
     <script src="popup.js"></script>
+    <script>
+      lucide.createIcons();
+    </script>
   </body>
 </html>
