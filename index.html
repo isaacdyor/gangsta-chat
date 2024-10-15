@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wordware Apps Viewer</title>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
       :root {
         --background: 0 0% 100%;
@@ -293,15 +292,15 @@
       }
 
       .logo {
-        height: 40px; /* Adjust this value as needed */
+        height: 40px;
         display: none;
       }
 
-      .light-mode .logo-light {
+      body.light-mode .logo-light {
         display: block;
       }
 
-      .dark-mode .logo-dark {
+      body.dark-mode .logo-dark {
         display: block;
       }
 
@@ -328,6 +327,7 @@
           class="logo logo-dark"
         />
         <button id="themeToggle">
+          <!-- Sun icon for light mode -->
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -340,16 +340,17 @@
             stroke-linejoin="round"
             class="light-icon"
           >
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2" />
-            <path d="M12 20v2" />
-            <path d="m4.93 4.93 1.41 1.41" />
-            <path d="m17.66 17.66 1.41 1.41" />
-            <path d="M2 12h2" />
-            <path d="M20 12h2" />
-            <path d="m6.34 17.66-1.41 1.41" />
-            <path d="m19.07 4.93-1.41 1.41" />
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
           </svg>
+          <!-- Moon icon for dark mode -->
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -363,7 +364,7 @@
             class="dark-icon"
             style="display: none"
           >
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
           </svg>
         </button>
       </div>
@@ -373,7 +374,6 @@
             type="text"
             id="apiKeyInput"
             placeholder="Enter your API key"
-            value="ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT"
           />
           <button id="getAppsButton">
             <svg
@@ -424,8 +424,5 @@
       </div>
     </div>
     <script src="popup.js"></script>
-    <script>
-      lucide.createIcons();
-    </script>
   </body>
 </html>

@@ -1,13 +1,3 @@
-// Configuration constants
-const CONFIG = {
-  apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
-  orgSlug: "isaac-dyor-d74b42",
-  appSlug: "318cfdc8-ebf9-46a6-beb3-3b1953926f93",
-  version: "latest",
-  apiBaseUrl: "https://api.wordware.ai/v1alpha",
-};
-
-// Store the last run ID for potential future use
 let lastRunId = null;
 
 // DOM Elements
@@ -172,11 +162,7 @@ function sendApiRequest(method, endpoint, body = null, apiKey = null) {
     },
   };
 
-  if (apiKey) {
-    options.headers.Authorization = `Bearer ${apiKey}`;
-  } else if (CONFIG.apiKey) {
-    options.headers.Authorization = `Bearer ${CONFIG.apiKey}`;
-  }
+  options.headers.Authorization = `Bearer ${apiKey}`;
 
   if (body) {
     options.body = JSON.stringify(body);
@@ -184,7 +170,7 @@ function sendApiRequest(method, endpoint, body = null, apiKey = null) {
 
   return sendMessage({
     type: "API_REQUEST",
-    url: `${CONFIG.apiBaseUrl}/${endpoint}`,
+    url: `https://api.wordware.ai/v1alpha/${endpoint}`,
     options,
   });
 }
