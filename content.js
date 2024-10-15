@@ -40,10 +40,21 @@ if (typeof window.wordwareSelectionMode === "undefined") {
 
       const selectedContent = e.target.textContent.trim();
 
+      // Save the selected content to local storage
+      const inputName = window.wordwareSelectionMode.currentInputName;
+      let selectedContentObj = JSON.parse(
+        localStorage.getItem("selectedContent") || "{}"
+      );
+      selectedContentObj[inputName] = selectedContent;
+      localStorage.setItem(
+        "selectedContent",
+        JSON.stringify(selectedContentObj)
+      );
+
       chrome.runtime.sendMessage(
         {
           action: "contentSelected",
-          inputName: window.wordwareSelectionMode.currentInputName,
+          inputName: inputName,
           content: selectedContent,
         },
         function (response) {

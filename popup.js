@@ -18,6 +18,29 @@ const elements = {
 let currentTheme = "light";
 const themeToggle = document.getElementById("themeToggle");
 
+// Add these new functions at the beginning of the file
+
+function saveAppState(orgSlug, appSlug) {
+  localStorage.setItem("currentAppState", JSON.stringify({ orgSlug, appSlug }));
+}
+
+function loadAppState() {
+  const state = localStorage.getItem("currentAppState");
+  return state ? JSON.parse(state) : null;
+}
+
+function saveSelectedContent(inputName, content) {
+  let selectedContent = JSON.parse(
+    localStorage.getItem("selectedContent") || "{}"
+  );
+  selectedContent[inputName] = content;
+  localStorage.setItem("selectedContent", JSON.stringify(selectedContent));
+}
+
+function loadSelectedContent() {
+  return JSON.parse(localStorage.getItem("selectedContent") || "{}");
+}
+
 // Add this function to handle theme toggling
 function toggleTheme() {
   const lightIcon = document.querySelector(".light-icon");
@@ -41,6 +64,38 @@ function toggleTheme() {
     darkIcon.style.display = "none";
   }
   localStorage.setItem("theme", currentTheme);
+}
+
+// Add this function at the beginning of the file
+function restoreAppState() {
+  const appState = loadAppState();
+  const selectedContent = loadSelectedContent();
+
+  if (appState) {
+    const storedApps = JSON.parse(localStorage.getItem("wordwareApps") || "[]");
+    const app = storedApps.find(
+      (a) => a.orgSlug === appState.orgSlug && a.appSlug === appState.appSlug
+    );
+    if (app) {
+      displayAppDetail(app, appState.orgSlug, appState.appSlug);
+
+      // Update input fields with previously selected content
+      if (Array.isArray(app.inputs)) {
+        app.inputs.forEach((input) => {
+          const inputElement = document.getElementById(input.name);
+          const badgeElement = document.getElementById(`badge-${input.name}`);
+          if (inputElement && badgeElement && selectedContent[input.name]) {
+            inputElement.value = selectedContent[input.name];
+            badgeElement.style.display = "inline-flex";
+          }
+        });
+      }
+    } else {
+      showHomeView();
+    }
+  } else {
+    showHomeView();
+  }
 }
 
 // Initialize the application when the DOM is fully loaded
@@ -100,6 +155,9 @@ function initializeApp() {
 
   // Add event listener for theme toggle
   themeToggle.addEventListener("click", toggleTheme);
+
+  // Replace the existing app state restoration code with this:
+  restoreAppState();
 
   // Show home view by default
   showHomeView();
@@ -295,36 +353,59 @@ async function handleAppClick(event) {
 }
 
 function displayAppDetail(app, orgSlug, appSlug) {
+  // Save the current app state
+  saveAppState(orgSlug, appSlug);
+
   elements.appTitle.textContent = app.title || appSlug;
   elements.appDescription.textContent =
     app.description || "No description available";
 
-  elements.appInputs.innerHTML = app.inputs
-    .map(
-      (input) => `
-    <div class="input-field">
-      <label for="${input.name}">${input.name}</label>
-      <div class="input-container">
-        ${getInputElement(input)}
-        <button class="select-page-content" data-input="${
+  // Update input fields with previously selected content
+  const selectedContent = loadSelectedContent();
+
+  // Check if app.inputs exists and is an array
+  if (Array.isArray(app.inputs)) {
+    elements.appInputs.innerHTML = app.inputs
+      .map(
+        (input) => `
+      <div class="input-field">
+        <label for="${input.name}">${input.name}</label>
+        <div class="input-container">
+          ${getInputElement(input)}
+          <button class="select-page-content" data-input="${
+            input.name
+          }">Select Page Content</button>
+        </div>
+        <div class="page-content-badge" id="badge-${
           input.name
-        }">Select Page Content</button>
+        }" style="display: ${
+          selectedContent[input.name] ? "inline-flex" : "none"
+        };">
+          Page Content
+          <span class="remove-badge" data-input="${input.name}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </span>
+        </div>
       </div>
-      <div class="page-content-badge" id="badge-${
-        input.name
-      }" style="display: none;">
-        Page Content
-        <span class="remove-badge" data-input="${input.name}">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </span>
-      </div>
-    </div>
-  `
-    )
-    .join("");
+    `
+      )
+      .join("");
+
+    // Update input fields with previously selected content
+    app.inputs.forEach((input) => {
+      const inputElement = document.getElementById(input.name);
+      const badgeElement = document.getElementById(`badge-${input.name}`);
+      if (selectedContent[input.name]) {
+        inputElement.value = selectedContent[input.name];
+        badgeElement.style.display = "inline-flex";
+      }
+    });
+  } else {
+    elements.appInputs.innerHTML = "<p>No inputs available for this app.</p>";
+  }
 
   // Add "Run App" button
   elements.appInputs.innerHTML += `
@@ -404,10 +485,17 @@ function handleRemovePageContent(event) {
     `.select-page-content[data-input="${inputName}"]`
   );
   const badgeElement = document.getElementById(`badge-${inputName}`);
+  const inputElement = document.getElementById(inputName);
 
   // Remove the stored page content
   delete selectButton.dataset.pageContent;
   badgeElement.style.display = "none";
+  inputElement.value = "";
+
+  // Remove the content from local storage
+  const selectedContent = loadSelectedContent();
+  delete selectedContent[inputName];
+  localStorage.setItem("selectedContent", JSON.stringify(selectedContent));
 }
 
 async function runApp(app, orgSlug, appSlug) {
@@ -535,8 +623,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     selectButton.dataset.pageContent = content;
     badgeElement.style.display = "inline-flex";
-    inputElement.value = content; // Update the input field with the selected content
+    inputElement.value = content;
+
+    // Save the selected content
+    saveSelectedContent(inputName, content);
 
     sendResponse({ success: true });
+  } else if (message.action === "reopenPopup") {
+    // This message is sent from the background script
+    // Restore the app state here
+    restoreAppState();
   }
 });
