@@ -365,22 +365,37 @@ function showAppsList() {
   showHomeView();
 }
 
-async function handleSelectPageContent(event) {
+function handleSelectPageContent(event) {
   const inputName = event.target.dataset.input;
   const badgeElement = document.getElementById(`badge-${inputName}`);
 
-  try {
-    const pageContent = await getPageContent();
-    if (pageContent) {
-      // Store the page content in a data attribute instead of setting the input value
-      event.target.dataset.pageContent = pageContent;
-      badgeElement.style.display = "inline-flex";
-    } else {
-      throw new Error("Failed to retrieve page content");
-    }
-  } catch (error) {
-    handleError("Error occurred while getting page content", error);
-  }
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tabs[0].id },
+        files: ["content.js"],
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            "Error injecting script: " + chrome.runtime.lastError.message
+          );
+        } else {
+          chrome.tabs.sendMessage(
+            tabs[0].id,
+            { action: "activateSelection", inputName: inputName },
+            function (response) {
+              if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError);
+              } else if (response && response.success) {
+                console.log("Selection mode activated");
+              }
+            }
+          );
+        }
+      }
+    );
+  });
 }
 
 function handleRemovePageContent(event) {
