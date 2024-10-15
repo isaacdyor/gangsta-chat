@@ -7,6 +7,7 @@ const CONFIG = {
   apiBaseUrl: "https://api.wordware.ai/v1alpha",
 };
 
+// Store the last run ID for potential future use
 let lastRunId = null;
 
 // DOM Elements
@@ -15,22 +16,27 @@ const elements = {
   result: null,
 };
 
-// Initialize the application
+// Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
 
 function initializeApp() {
+  // Get references to DOM elements
   elements.scrapeButton = document.getElementById("scrapeButton");
   elements.result = document.getElementById("result");
 
+  // Add click event listener to the scrape button
   elements.scrapeButton.addEventListener("click", runApp);
 }
 
+// Main function to run the application
 async function runApp() {
   setScrapingState();
 
   try {
+    // Get the content of the active tab
     const pageContent = await getPageContent();
     if (pageContent) {
+      // Initiate the API run with the retrieved content
       await initiateApiRun(pageContent);
     } else {
       throw new Error("Failed to retrieve page content");
@@ -40,6 +46,7 @@ async function runApp() {
   }
 }
 
+// Function to get the content of the active tab
 function getPageContent() {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -77,8 +84,10 @@ function getTextContent() {
     .trim();
 }
 
+// Function to initiate an API run
 async function initiateApiRun(pageContent) {
   try {
+    // Send a POST request to start a new run
     const runResponse = await sendApiRequest(
       "POST",
       `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
@@ -91,6 +100,7 @@ async function initiateApiRun(pageContent) {
 
     if (runResponse && runResponse.runId) {
       lastRunId = runResponse.runId;
+      // Poll for the run status
       await pollRunStatus(lastRunId);
     } else {
       throw new Error("No runId received in the response");
@@ -100,13 +110,16 @@ async function initiateApiRun(pageContent) {
   }
 }
 
+// Function to poll the run status
 async function pollRunStatus(runId) {
   try {
     while (true) {
+      // Check the status of the run
       const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
 
       if (statusResponse) {
         if (statusResponse.status === "COMPLETE") {
+          // Display the results when the run is complete
           setResultsState(
             statusResponse.outputs?.answer || "No results found."
           );
@@ -118,6 +131,7 @@ async function pollRunStatus(runId) {
         throw new Error("Unable to fetch run status");
       }
 
+      // Wait for 5 seconds before checking again
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
   } catch (error) {
@@ -125,6 +139,7 @@ async function pollRunStatus(runId) {
   }
 }
 
+// Function to send API requests
 function sendApiRequest(method, endpoint, body = null) {
   const options = {
     method,
@@ -145,6 +160,7 @@ function sendApiRequest(method, endpoint, body = null) {
   });
 }
 
+// Function to send messages to the background script
 function sendMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response) => {
@@ -157,18 +173,21 @@ function sendMessage(message) {
   });
 }
 
+// Function to set the UI state while scraping
 function setScrapingState() {
   elements.scrapeButton.disabled = true;
   elements.scrapeButton.innerHTML = '<span class="loader"></span> Scraping...';
   elements.result.textContent = "";
 }
 
+// Function to set the UI state after receiving results
 function setResultsState(results) {
   elements.scrapeButton.disabled = false;
   elements.scrapeButton.textContent = "Scrape Contacts";
   elements.result.textContent = results;
 }
 
+// Function to handle errors and update the UI accordingly
 function handleError(message, error) {
   console.error(message, error);
   elements.scrapeButton.disabled = false;
