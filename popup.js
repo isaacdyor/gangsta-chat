@@ -250,13 +250,26 @@ function sendMessage(message) {
 // Function to handle errors and update the UI accordingly
 function handleError(message, error) {
   console.error(message, error);
-  elements.scrapeButton.disabled = false;
-  elements.scrapeButton.textContent = "Scrape Contacts";
-  elements.result.textContent = `Error: ${error.message}`;
+  if (elements.scrapeButton) {
+    elements.scrapeButton.disabled = false;
+    elements.scrapeButton.textContent = "Scrape Contacts";
+  }
+  if (elements.result) {
+    elements.result.textContent = `Error: ${error.message}`;
+  }
 
   // Also reset the Get Apps button
-  elements.getAppsButton.disabled = false;
-  elements.getAppsButton.textContent = "Get Apps";
+  if (elements.getAppsButton) {
+    elements.getAppsButton.disabled = false;
+    elements.getAppsButton.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-ccw">
+        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+        <path d="M16 16h5v5"/>
+      </svg>
+    `;
+  }
 }
 
 async function getApps() {
@@ -374,13 +387,11 @@ function displayAppDetail(app, orgSlug, appSlug) {
           ${getInputElement(input)}
           <button class="select-page-content" data-input="${
             input.name
-          }">Select Page Content</button>
+          }">Select Content</button>
         </div>
         <div class="page-content-badge" id="badge-${
           input.name
-        }" style="display: ${
-          selectedContent[input.name] ? "inline-flex" : "none"
-        };">
+        }" style="display: none;">
           Page Content
           <span class="remove-badge" data-input="${input.name}">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -397,6 +408,18 @@ function displayAppDetail(app, orgSlug, appSlug) {
     app.inputs.forEach((input) => {
       const inputElement = document.getElementById(input.name);
       const badgeElement = document.getElementById(`badge-${input.name}`);
+      const selectButton = document.querySelector(
+        `.select-page-content[data-input="${input.name}"]`
+      );
+
+      getSelectionMode((isActive) => {
+        if (isActive) {
+          selectButton.textContent = "Done Selecting";
+        } else {
+          selectButton.textContent = "Select Content";
+        }
+      });
+
       if (selectedContent[input.name]) {
         inputElement.value = selectedContent[input.name];
         badgeElement.style.display = "inline-flex";
@@ -450,33 +473,62 @@ function showAppsList() {
 function handleSelectPageContent(event) {
   const inputName = event.target.dataset.input;
   const badgeElement = document.getElementById(`badge-${inputName}`);
+  const selectButton = event.target;
 
-  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-    chrome.scripting.executeScript(
-      {
-        target: { tabId: tabs[0].id },
-        files: ["content.js"],
-      },
-      () => {
-        if (chrome.runtime.lastError) {
-          console.error(
-            "Error injecting script: " + chrome.runtime.lastError.message
-          );
-        } else {
+  getSelectionMode((isActive) => {
+    if (isActive) {
+      // Deactivate selection mode
+      setSelectionMode(false);
+      selectButton.textContent = "Select Content";
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (tabs[0]) {
           chrome.tabs.sendMessage(
             tabs[0].id,
-            { action: "activateSelection", inputName: inputName },
+            { action: "deactivateSelection" },
             function (response) {
               if (chrome.runtime.lastError) {
                 console.error(chrome.runtime.lastError);
               } else if (response && response.success) {
-                console.log("Selection mode activated");
+                console.log("Selection mode deactivated");
               }
             }
           );
         }
-      }
-    );
+      });
+    } else {
+      // Activate selection mode
+      setSelectionMode(true);
+      selectButton.textContent = "Done Selecting";
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (tabs[0]) {
+          chrome.scripting.executeScript(
+            {
+              target: { tabId: tabs[0].id },
+              files: ["content.js"],
+            },
+            () => {
+              if (chrome.runtime.lastError) {
+                console.error(
+                  "Error injecting script: " + chrome.runtime.lastError.message
+                );
+              } else {
+                chrome.tabs.sendMessage(
+                  tabs[0].id,
+                  { action: "activateSelection", inputName: inputName },
+                  function (response) {
+                    if (chrome.runtime.lastError) {
+                      console.error(chrome.runtime.lastError);
+                    } else if (response && response.success) {
+                      console.log("Selection mode activated");
+                    }
+                  }
+                );
+              }
+            }
+          );
+        }
+      });
+    }
   });
 }
 
@@ -640,3 +692,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     restoreAppState();
   }
 });
+
+function chromeStorageAvailable() {
+  return chrome && chrome.storage && chrome.storage.local;
+}
+
+function setSelectionMode(isActive) {
+  if (chromeStorageAvailable()) {
+    chrome.storage.local.set({ selectionMode: isActive }, function () {
+      console.log("Selection mode set to:", isActive);
+    });
+  } else {
+    localStorage.setItem("selectionMode", JSON.stringify(isActive));
+    console.log("Selection mode set to (localStorage):", isActive);
+  }
+}
+
+function getSelectionMode(callback) {
+  if (chromeStorageAvailable()) {
+    chrome.storage.local.get(["selectionMode"], function (result) {
+      callback(result.selectionMode || false);
+    });
+  } else {
+    const selectionMode = JSON.parse(
+      localStorage.getItem("selectionMode") || "false"
+    );
+    callback(selectionMode);
+  }
+}
