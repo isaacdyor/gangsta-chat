@@ -45,6 +45,8 @@ function loadSelectedContent() {
 function toggleTheme() {
   const lightIcon = document.querySelector(".light-icon");
   const darkIcon = document.querySelector(".dark-icon");
+  const logoLight = document.getElementById("logo-light");
+  const logoDark = document.getElementById("logo-dark");
 
   if (currentTheme === "light") {
     document.documentElement.classList.remove("light");
@@ -54,6 +56,8 @@ function toggleTheme() {
     currentTheme = "dark";
     lightIcon.style.display = "none";
     darkIcon.style.display = "block";
+    logoLight.style.display = "none";
+    logoDark.style.display = "block";
   } else {
     document.documentElement.classList.remove("dark");
     document.documentElement.classList.add("light");
@@ -62,6 +66,8 @@ function toggleTheme() {
     currentTheme = "light";
     lightIcon.style.display = "block";
     darkIcon.style.display = "none";
+    logoLight.style.display = "block";
+    logoDark.style.display = "none";
   }
   localStorage.setItem("theme", currentTheme);
 }
@@ -126,17 +132,23 @@ function initializeApp() {
   currentTheme = localStorage.getItem("theme") || "light";
   const lightIcon = document.querySelector(".light-icon");
   const darkIcon = document.querySelector(".dark-icon");
+  const logoLight = document.getElementById("logo-light");
+  const logoDark = document.getElementById("logo-dark");
 
   if (currentTheme === "dark") {
     document.documentElement.classList.add("dark");
     document.body.classList.add("dark-mode");
     lightIcon.style.display = "none";
     darkIcon.style.display = "block";
+    logoLight.style.display = "none";
+    logoDark.style.display = "block";
   } else {
     document.documentElement.classList.add("light");
     document.body.classList.add("light-mode");
     lightIcon.style.display = "block";
     darkIcon.style.display = "none";
+    logoLight.style.display = "block";
+    logoDark.style.display = "none";
   }
 
   // Add event listener for theme toggle

@@ -296,11 +296,11 @@
         display: none;
       }
 
-      body.light-mode .logo-light {
+      body.light-mode #logo-light {
         display: block;
       }
 
-      body.dark-mode .logo-dark {
+      body.dark-mode #logo-dark {
         display: block;
       }
 
@@ -319,12 +319,14 @@
         <img
           src="wordware-logo-light.png"
           alt="Wordware Logo"
-          class="logo logo-light"
+          class="logo"
+          id="logo-light"
         />
         <img
           src="wordware-logo-dark.png"
           alt="Wordware Logo"
-          class="logo logo-dark"
+          class="logo"
+          id="logo-dark"
         />
         <button id="themeToggle">
           <!-- Sun icon for light mode -->
