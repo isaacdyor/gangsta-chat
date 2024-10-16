@@ -23,9 +23,11 @@ const elements = {
   darkIcon: null,
   logoLight: null,
   logoDark: null,
+  chatContainer: null,
 };
 
 let currentTheme = "light";
+let messages = [];
 
 // Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
@@ -41,6 +43,7 @@ function initializeApp() {
   elements.darkIcon = document.querySelector(".dark-icon");
   elements.logoLight = document.getElementById("logo-light");
   elements.logoDark = document.getElementById("logo-dark");
+  elements.chatContainer = document.getElementById("chatContainer");
 
   // Add click event listener to the send button
   elements.sendButton.addEventListener("click", runApp);
@@ -58,6 +61,9 @@ function initializeApp() {
   // Initialize theme
   currentTheme = localStorage.getItem("theme") || "light";
   setTheme(currentTheme);
+
+  // Load stored messages
+  loadMessages();
 }
 
 function toggleTheme() {
@@ -86,6 +92,12 @@ function setTheme(theme) {
 async function runApp() {
   const userMessage = elements.userInput.value.trim();
   if (!userMessage) return;
+
+  // Display user message
+  addMessageToChat(userMessage, "user");
+
+  // Clear input field
+  elements.userInput.value = "";
 
   setScrapingState();
 
@@ -154,6 +166,7 @@ async function initiateApiRun(pageContent, userMessage) {
       {
         inputs: {
           page_content: pageContent,
+          // page_content: "test",
           question: userMessage,
         },
       }
@@ -240,24 +253,24 @@ function setScrapingState() {
   elements.sendButton.disabled = true;
   elements.sendButton.innerHTML =
     '<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
-  elements.result.textContent = "";
 }
 
 // Function to set the UI state after receiving results
-function setResultsState(message) {
+function setResultsState() {
   elements.sendButton.disabled = false;
-  elements.sendButton.innerHTML =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>';
-  elements.result.textContent = message;
+  elements.sendButton.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send">
+      <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/>
+      <path d="m21.854 2.147-10.94 10.939" />
+    </svg>
+  `;
 }
 
 // Function to handle errors and update the UI accordingly
 function handleError(message, error) {
   console.error(message, error);
-  elements.sendButton.disabled = false;
-  elements.sendButton.innerHTML =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>';
-  elements.result.textContent = `Error: ${error.message}`;
+  setResultsState();
+  addMessageToChat(`Error: ${error.message}`, "bot");
 }
 
 // Add this new function to convert text to speech
@@ -292,16 +305,143 @@ async function convertTextToSpeech(text) {
     }
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
-    renderAudio(audioUrl);
+    addAudioMessageToChat(audioUrl, "bot");
   } catch (error) {
     console.error("Error in text-to-speech conversion:", error);
     handleError("Error in text-to-speech conversion", error);
+  } finally {
+    // Set the UI back to the non-loading state
+    setResultsState();
   }
 }
 
-// Add this new function to render the audio
-function renderAudio(audioUrl) {
-  elements.audioPlayer.src = audioUrl;
-  elements.audioPlayer.style.display = "block";
-  setResultsState("Audio generated successfully. Press play to listen.");
+// New function to add audio message to chat
+function addAudioMessageToChat(audioUrl, sender, save = true) {
+  const messageElement = document.createElement("div");
+  messageElement.classList.add("message", `${sender}-message`);
+
+  const audioContainer = document.createElement("div");
+  audioContainer.classList.add("audio-container");
+
+  const audioElement = document.createElement("audio");
+  audioElement.src = audioUrl;
+
+  const playButton = document.createElement("button");
+  playButton.classList.add("play-button");
+  playButton.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+    </svg>
+  `;
+
+  const timeline = document.createElement("input");
+  timeline.type = "range";
+  timeline.min = 0;
+  timeline.max = 100;
+  timeline.value = 0;
+  timeline.classList.add("timeline");
+
+  audioContainer.appendChild(playButton);
+  audioContainer.appendChild(timeline);
+  messageElement.appendChild(audioContainer);
+
+  // Play/Pause functionality
+  playButton.addEventListener("click", () => {
+    if (audioElement.paused) {
+      audioElement.play();
+      playButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="4" width="4" height="16"></rect>
+          <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+      `;
+    } else {
+      audioElement.pause();
+      playButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      `;
+    }
+  });
+
+  // Update timeline
+  audioElement.addEventListener("timeupdate", () => {
+    const progress = (audioElement.currentTime / audioElement.duration) * 100;
+    timeline.value = progress;
+  });
+
+  // Seek functionality
+  timeline.addEventListener("input", () => {
+    const time = (timeline.value / 100) * audioElement.duration;
+    audioElement.currentTime = time;
+  });
+
+  // Reset play button when audio ends
+  audioElement.addEventListener("ended", () => {
+    playButton.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      </svg>
+    `;
+  });
+
+  // Insert the new message at the end of the chat container
+  elements.chatContainer.appendChild(messageElement);
+
+  // Scroll to the bottom of the chat container
+  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+
+  // Save the message to the messages array and Chrome storage only if save is true
+  if (save) {
+    messages.push({ type: "audio", url: audioUrl, sender });
+    saveMessages();
+  }
+}
+
+// Update this function to handle audio messages
+function addMessageToChat(content, sender, save = true) {
+  const messageElement = document.createElement("div");
+  messageElement.classList.add("message", `${sender}-message`);
+  messageElement.textContent = content;
+
+  // Insert the new message at the end of the chat container
+  elements.chatContainer.appendChild(messageElement);
+
+  // Scroll to the bottom of the chat container
+  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+
+  // Save the message to the messages array and Chrome storage only if save is true
+  if (save) {
+    messages.push({ type: "text", content, sender });
+    saveMessages();
+  }
+}
+
+function saveMessages() {
+  chrome.storage.local.set({ messages: messages }, function () {
+    if (chrome.runtime.lastError) {
+      console.error("Error saving messages:", chrome.runtime.lastError);
+    }
+  });
+}
+
+function loadMessages() {
+  chrome.storage.local.get(["messages"], function (result) {
+    if (chrome.runtime.lastError) {
+      console.error("Error loading messages:", chrome.runtime.lastError);
+    } else if (result.messages) {
+      messages = result.messages;
+      // Only clear and repopulate if the chat container is empty
+      if (elements.chatContainer.children.length === 0) {
+        messages.forEach((message) => {
+          if (message.type === "text") {
+            addMessageToChat(message.content, message.sender, false);
+          } else if (message.type === "audio") {
+            addAudioMessageToChat(message.url, message.sender, false);
+          }
+        });
+      }
+    }
+  });
 }
