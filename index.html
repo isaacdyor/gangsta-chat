@@ -5,70 +5,123 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wordware Apps Viewer</title>
     <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --border: 240 5.9% 90%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+      }
+
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --border: 240 3.7% 15.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+      }
+
       body {
         font-family: "Arial", sans-serif;
-        background-color: #121212;
-        color: #e0e0e0;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
         margin: 0;
-        padding: 10px;
+        padding: 0;
         width: 400px;
         box-sizing: border-box;
       }
+
       .container {
-        background-color: #121212;
+        background-color: hsl(var(--background));
         border-radius: 8px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        padding: 10px;
       }
-      h1 {
-        margin-top: 0;
-        margin-bottom: 24px;
-        font-size: 24px;
-        color: #ffffff;
-        font-weight: 600;
-        text-align: center;
+
+      #header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 10px;
+        border-bottom: 1px solid hsl(var(--border));
+        margin-bottom: 10px;
       }
-      #scrapeButton {
-        width: 100%;
-        padding: 12px;
-        background-color: #ffffff;
-        color: #121212;
+
+      .logo {
+        height: 30px;
+      }
+
+      #themeToggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: hsl(var(--foreground));
+        padding: 0;
+      }
+
+      #themeToggle svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      #inputContainer {
+        display: flex;
+        padding-top: 10px;
+        position: relative;
+      }
+
+      #userInput {
+        flex-grow: 1;
+        padding: 8px 40px 8px 8px;
+        border: 1px solid hsl(var(--border));
+        border-radius: 4px;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
+
+      #sendButton {
+        position: absolute;
+        right: 2px;
+        top: 12px;
+        background-color: hsl(var(--foreground));
         border: none;
         border-radius: 4px;
-        font-size: 16px;
         cursor: pointer;
-        transition: background-color 0.3s, transform 0.1s;
+        padding: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
       }
-      #scrapeButton:hover {
-        background-color: #f0f0f0;
+
+      #sendButton svg {
+        width: 18px;
+        height: 18px;
+        color: hsl(var(--background));
       }
-      #scrapeButton:active {
-        transform: scale(0.98);
+
+      #sendButton:hover {
+        opacity: 0.8;
       }
-      #scrapeButton:disabled {
-        background-color: #d0d0d0;
-        color: #606060;
+
+      #sendButton:disabled {
         cursor: not-allowed;
+        opacity: 0.5;
       }
-      .loader {
-        border: 3px solid #333333;
-        border-top: 3px solid #d0d0d0;
-        border-radius: 50%;
-        width: 14px;
-        height: 14px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
-        margin-right: 10px;
-        vertical-align: middle;
-      }
+
       @keyframes spin {
-        0% {
+        from {
           transform: rotate(0deg);
         }
-        100% {
+        to {
           transform: rotate(360deg);
         }
       }
+
+      .animate-spin {
+        animation: spin 1s linear infinite;
+      }
+
       #result {
         margin-top: 20px;
         padding: 15px;
@@ -77,8 +130,9 @@
         font-size: 14px;
         max-height: 300px;
         overflow-y: auto;
-        color: #cccccc;
+        color: hsl(var(--foreground));
       }
+
       #audioPlayer {
         width: 100%;
         margin-top: 20px;
@@ -88,8 +142,82 @@
   </head>
   <body>
     <div class="container">
-      <h1>Wordware Contact Scraper</h1>
-      <button id="scrapeButton">Scrape Contacts</button>
+      <div id="header">
+        <img
+          src="wordware-logo-light.png"
+          alt="Wordware Logo"
+          class="logo"
+          id="logo-light"
+        />
+        <img
+          src="wordware-logo-dark.png"
+          alt="Wordware Logo"
+          class="logo"
+          id="logo-dark"
+          style="display: none"
+        />
+        <button id="themeToggle">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="light-icon"
+          >
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          </svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="dark-icon"
+            style="display: none"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="inputContainer">
+        <input type="text" id="userInput" placeholder="Type your message..." />
+        <button id="sendButton">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="lucide lucide-send"
+          >
+            <path
+              d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
+            />
+            <path d="m21.854 2.147-10.94 10.939" />
+          </svg>
+        </button>
+      </div>
       <div id="result"></div>
       <audio id="audioPlayer" controls></audio>
     </div>
