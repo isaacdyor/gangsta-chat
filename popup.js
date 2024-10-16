@@ -382,23 +382,19 @@ function displayAppDetail(app, orgSlug, appSlug) {
       .map(
         (input) => `
       <div class="input-field">
-        <label for="${input.name}">${input.name}</label>
+        <label for="${input.name}" class="text-lg font-semibold">${
+          input.name
+        }</label>
         <div class="input-container">
           ${getInputElement(input)}
-          <button class="select-page-content" data-input="${
-            input.name
-          }">Select Content</button>
         </div>
-        <div class="page-content-badge" id="badge-${
-          input.name
-        }" style="display: none;">
-          Page Content
-          <span class="remove-badge" data-input="${input.name}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </span>
+        <div class="include-content-container">
+          <input type="checkbox" id="include-content-${
+            input.name
+          }" class="include-content-checkbox">
+          <label for="include-content-${
+            input.name
+          }" class="text-sm">Include page content</label>
         </div>
       </div>
     `
@@ -407,23 +403,18 @@ function displayAppDetail(app, orgSlug, appSlug) {
 
     app.inputs.forEach((input) => {
       const inputElement = document.getElementById(input.name);
-      const badgeElement = document.getElementById(`badge-${input.name}`);
-      const selectButton = document.querySelector(
-        `.select-page-content[data-input="${input.name}"]`
+      const includeContentCheckbox = document.getElementById(
+        `include-content-${input.name}`
       );
-
-      getSelectionMode((isActive) => {
-        if (isActive) {
-          selectButton.textContent = "Done Selecting";
-        } else {
-          selectButton.textContent = "Select Content";
-        }
-      });
 
       if (selectedContent[input.name]) {
         inputElement.value = selectedContent[input.name];
-        badgeElement.style.display = "inline-flex";
+        includeContentCheckbox.checked = true;
       }
+
+      includeContentCheckbox.addEventListener("change", (event) => {
+        handleIncludeContentChange(event, input.name);
+      });
     });
   } else {
     elements.appInputs.innerHTML = "<p>No inputs available for this app.</p>";
@@ -431,20 +422,11 @@ function displayAppDetail(app, orgSlug, appSlug) {
 
   // Add "Run App" button
   elements.appInputs.innerHTML += `
-    <button id="runAppButton">Run App</button>
+    <button id="runAppButton" class="mt-4">Run App</button>
     <div id="appResult"></div>
   `;
 
   showAppDetailView();
-
-  // Add event listeners for the new buttons
-  document.querySelectorAll(".select-page-content").forEach((button) => {
-    button.addEventListener("click", handleSelectPageContent);
-  });
-
-  document.querySelectorAll(".remove-badge").forEach((badge) => {
-    badge.addEventListener("click", handleRemovePageContent);
-  });
 
   // Add event listener for the "Run App" button
   document
@@ -455,12 +437,12 @@ function displayAppDetail(app, orgSlug, appSlug) {
 function getInputElement(input) {
   switch (input.type) {
     case "longtext":
-      return `<textarea id="${input.name}" placeholder="${input.description}"></textarea>`;
+      return `<textarea id="${input.name}" placeholder="${input.description}" class="w-full"></textarea>`;
     case "text":
     case "image":
     case "audio":
     default:
-      return `<input type="text" id="${input.name}" placeholder="${input.description}">`;
+      return `<input type="text" id="${input.name}" placeholder="${input.description}" class="w-full">`;
   }
 }
 
@@ -470,85 +452,27 @@ function showAppsList() {
   showHomeView();
 }
 
-function handleSelectPageContent(event) {
-  const inputName = event.target.dataset.input;
-  const badgeElement = document.getElementById(`badge-${inputName}`);
-  const selectButton = event.target;
-
-  getSelectionMode((isActive) => {
-    if (isActive) {
-      // Deactivate selection mode
-      setSelectionMode(false);
-      selectButton.textContent = "Select Content";
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs[0]) {
-          chrome.tabs.sendMessage(
-            tabs[0].id,
-            { action: "deactivateSelection" },
-            function (response) {
-              if (chrome.runtime.lastError) {
-                console.error(chrome.runtime.lastError);
-              } else if (response && response.success) {
-                console.log("Selection mode deactivated");
-              }
-            }
-          );
-        }
-      });
-    } else {
-      // Activate selection mode
-      setSelectionMode(true);
-      selectButton.textContent = "Done Selecting";
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs[0]) {
-          chrome.scripting.executeScript(
-            {
-              target: { tabId: tabs[0].id },
-              files: ["content.js"],
-            },
-            () => {
-              if (chrome.runtime.lastError) {
-                console.error(
-                  "Error injecting script: " + chrome.runtime.lastError.message
-                );
-              } else {
-                chrome.tabs.sendMessage(
-                  tabs[0].id,
-                  { action: "activateSelection", inputName: inputName },
-                  function (response) {
-                    if (chrome.runtime.lastError) {
-                      console.error(chrome.runtime.lastError);
-                    } else if (response && response.success) {
-                      console.log("Selection mode activated");
-                    }
-                  }
-                );
-              }
-            }
-          );
-        }
-      });
-    }
-  });
-}
-
-function handleRemovePageContent(event) {
-  const inputName = event.target.closest(".remove-badge").dataset.input;
-  const selectButton = document.querySelector(
-    `.select-page-content[data-input="${inputName}"]`
-  );
-  const badgeElement = document.getElementById(`badge-${inputName}`);
+function handleIncludeContentChange(event, inputName) {
   const inputElement = document.getElementById(inputName);
-
-  // Remove the stored page content
-  delete selectButton.dataset.pageContent;
-  badgeElement.style.display = "none";
-  inputElement.value = "";
-
-  // Remove the content from local storage
   const selectedContent = loadSelectedContent();
-  delete selectedContent[inputName];
-  localStorage.setItem("selectedContent", JSON.stringify(selectedContent));
+
+  if (event.target.checked) {
+    if (selectedContent[inputName]) {
+      inputElement.value = selectedContent[inputName];
+    } else {
+      getPageContent()
+        .then((pageContent) => {
+          saveSelectedContent(inputName, pageContent);
+          inputElement.value = pageContent;
+        })
+        .catch((error) => {
+          console.error("Error getting page content:", error);
+          alert("Failed to get page content. Please try again.");
+        });
+    }
+  } else {
+    inputElement.value = "";
+  }
 }
 
 async function runApp(app, orgSlug, appSlug) {
@@ -569,15 +493,14 @@ async function runApp(app, orgSlug, appSlug) {
     const inputs = {};
     app.inputs.forEach((input) => {
       const inputElement = document.getElementById(input.name);
-      const badgeElement = document.getElementById(`badge-${input.name}`);
+      const includeContentCheckbox = document.getElementById(
+        `include-content-${input.name}`
+      );
 
-      // Check if the badge is visible (indicating selected content)
-      if (badgeElement.style.display === "inline-flex") {
-        // Use the selected content stored in local storage
+      if (includeContentCheckbox.checked) {
         const selectedContent = loadSelectedContent();
-        inputs[input.name] = selectedContent[input.name] || "";
+        inputs[input.name] = selectedContent[input.name] || inputElement.value;
       } else {
-        // Use the input value if no content was selected
         inputs[input.name] = inputElement.value;
       }
     });
@@ -697,26 +620,24 @@ function chromeStorageAvailable() {
   return chrome && chrome.storage && chrome.storage.local;
 }
 
-function setSelectionMode(isActive) {
-  if (chromeStorageAvailable()) {
-    chrome.storage.local.set({ selectionMode: isActive }, function () {
-      console.log("Selection mode set to:", isActive);
-    });
-  } else {
-    localStorage.setItem("selectionMode", JSON.stringify(isActive));
-    console.log("Selection mode set to (localStorage):", isActive);
+// Update the CSS for the new layout
+const style = document.createElement("style");
+style.textContent = `
+  .input-field {
+    margin-bottom: 1rem;
   }
-}
-
-function getSelectionMode(callback) {
-  if (chromeStorageAvailable()) {
-    chrome.storage.local.get(["selectionMode"], function (result) {
-      callback(result.selectionMode || false);
-    });
-  } else {
-    const selectionMode = JSON.parse(
-      localStorage.getItem("selectionMode") || "false"
-    );
-    callback(selectionMode);
+  .input-container {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
   }
-}
+  .include-content-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .include-content-checkbox {
+    width: 1rem;
+    height: 1rem;
+  }
+`;
+document.head.appendChild(style);

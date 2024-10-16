@@ -128,20 +128,31 @@
         background-color: hsl(var(--accent));
       }
       #themeToggle {
-        position: absolute;
-        top: 10px;
-        right: 10px;
+        position: static; /* Remove absolute positioning */
         background: none;
         border: none;
         color: hsl(var(--foreground));
         cursor: pointer;
-        padding: 0;
+        padding: 8px; /* Add some padding for better touch target */
+        display: flex;
+        align-items: center;
       }
       #header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 20px;
+        padding: 0; /* Remove padding from header */
+      }
+      .logo-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%; /* Make sure it takes full width */
+      }
+      .logo {
+        height: 32px; /* Slightly reduced size for better proportion */
+        display: none;
       }
       #appsList {
         list-style-type: none;
@@ -311,64 +322,97 @@
         margin-bottom: 20px;
         padding: 10px 0;
       }
+
+      /* Update these styles */
+      .input-field label {
+        font-size: 1.125rem; /* Decreased from 1.25rem */
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        display: block;
+      }
+
+      .include-content-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .include-content-checkbox {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+      }
+
+      .include-content-container label {
+        font-size: 0.875rem;
+        line-height: 1rem;
+        display: flex;
+        align-items: center;
+        margin: 0;
+      }
     </style>
   </head>
   <body class="light-mode">
     <div class="container">
       <div id="header">
-        <img
-          src="wordware-logo-light.png"
-          alt="Wordware Logo"
-          class="logo"
-          id="logo-light"
-        />
-        <img
-          src="wordware-logo-dark.png"
-          alt="Wordware Logo"
-          class="logo"
-          id="logo-dark"
-        />
-        <button id="themeToggle">
-          <!-- Sun icon for light mode -->
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="light-icon"
-          >
-            <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v2"></path>
-            <path d="M12 20v2"></path>
-            <path d="m4.93 4.93 1.41 1.41"></path>
-            <path d="m17.66 17.66 1.41 1.41"></path>
-            <path d="M2 12h2"></path>
-            <path d="M20 12h2"></path>
-            <path d="m6.34 17.66-1.41 1.41"></path>
-            <path d="m19.07 4.93-1.41 1.41"></path>
-          </svg>
-          <!-- Moon icon for dark mode -->
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="dark-icon"
-            style="display: none"
-          >
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-          </svg>
-        </button>
+        <div class="logo-container">
+          <div>
+            <img
+              src="wordware-logo-light.png"
+              alt="Wordware Logo"
+              class="logo"
+              id="logo-light"
+            />
+            <img
+              src="wordware-logo-dark.png"
+              alt="Wordware Logo"
+              class="logo"
+              id="logo-dark"
+            />
+          </div>
+          <button id="themeToggle">
+            <!-- Sun icon for light mode -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="light-icon"
+            >
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path>
+              <path d="M12 20v2"></path>
+              <path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path>
+              <path d="M2 12h2"></path>
+              <path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path>
+              <path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+            <!-- Moon icon for dark mode -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="dark-icon"
+              style="display: none"
+            >
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+            </svg>
+          </button>
+        </div>
       </div>
       <div id="homeView">
         <div class="api-key-container">
