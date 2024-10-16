@@ -3,7 +3,7 @@
   "name": "Gangsta Chat",
   "description": "Talk with your webpage",
   "version": "1.0",
-  "permissions": ["activeTab", "scripting", "storage", "tahs"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://api.wordware.ai/"],
   "action": {
     "default_popup": "index.html"

@@ -3,7 +3,7 @@ const CONFIG = {
   apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
   orgSlug: "isaac-dyor-d74b42",
   appSlug: "ad64f510-cc08-4b42-9cfd-ba6089397e16",
-  version: "1.4",
+  version: "1.2",
   apiBaseUrl: "https://api.wordware.ai/v1alpha",
   elevenLabsApiKey: "sk_019aa886d22e7e4fa060bf0f216ed6215dd9fb3f1e4bfc33",
   elevenLabsVoiceId: "bIHbv24MWmeRgasZH58o",
@@ -11,6 +11,9 @@ const CONFIG = {
 
 // Store the last run ID for potential future use
 let lastRunId = null;
+let currentRunId = null;
+let currentTabId = null;
+let tabConversations = {};
 
 // DOM Elements
 const elements = {
@@ -28,11 +31,6 @@ const elements = {
 
 let currentTheme = "light";
 let messages = [];
-
-// Add these variables at the top of your file, after the CONFIG object
-let currentRunId = null;
-let currentTabId = null;
-let tabConversations = {};
 
 // Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
@@ -67,10 +65,7 @@ function initializeApp() {
   currentTheme = localStorage.getItem("theme") || "light";
   setTheme(currentTheme);
 
-  // Load stored messages
-  loadMessages();
-
-  // Add this new listener
+  // Add listener for tab activation
   chrome.tabs.onActivated.addListener(handleTabChange);
 
   // Initialize currentTabId and load the conversation for the current tab
@@ -81,6 +76,126 @@ function initializeApp() {
     }
   });
 }
+
+function handleTabChange(activeInfo) {
+  currentTabId = activeInfo.tabId;
+  loadConversationForTab(currentTabId);
+}
+
+function loadConversationForTab(tabId) {
+  chrome.storage.local.get([`conversation_${tabId}`], function (result) {
+    if (chrome.runtime.lastError) {
+      console.error("Error loading conversation:", chrome.runtime.lastError);
+    } else {
+      messages = result[`conversation_${tabId}`] || [];
+      elements.chatContainer.innerHTML = "";
+      messages.forEach((message) => {
+        if (message.type === "text") {
+          addMessageToChat(message.content, message.sender, false);
+        } else if (message.type === "audio") {
+          addAudioMessageToChat(message.url, message.sender, false);
+        }
+      });
+    }
+  });
+}
+
+function saveMessages() {
+  const conversationKey = `conversation_${currentTabId}`;
+  chrome.storage.local.set({ [conversationKey]: messages }, function () {
+    if (chrome.runtime.lastError) {
+      console.error("Error saving messages:", chrome.runtime.lastError);
+    }
+  });
+}
+
+// ... (rest of the existing functions)
+
+// Modify the runApp function
+async function runApp() {
+  const userMessage = elements.userInput.value.trim();
+  if (!userMessage) return;
+
+  // Display user message
+  addMessageToChat(userMessage, "user");
+
+  // Clear input field and unfocus it
+  elements.userInput.value = "";
+  elements.userInput.blur();
+
+  setScrapingState();
+
+  // Add thinking message
+  const thinkingElement = addThinkingMessage();
+
+  try {
+    if (!currentRunId) {
+      // This is the first message, initiate a new run
+      const pageContent = await getPageContent();
+      if (pageContent) {
+        console.log("Page content:", pageContent);
+        // await initiateApiRun(pageContent, userMessage);
+      } else {
+        throw new Error("Failed to retrieve page content");
+      }
+    } else {
+      // This is a subsequent message, send it as an ask
+      await sendAsk(userMessage);
+    }
+  } catch (error) {
+    handleError("Error occurred", error);
+  } finally {
+    // Remove thinking message
+    thinkingElement.remove();
+  }
+}
+
+// ... (rest of the existing functions)
+
+// Function to poll the run status
+async function pollRunStatus(runId) {
+  try {
+    let hasReceivedResponse = false;
+    while (true) {
+      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
+
+      if (statusResponse) {
+        if (statusResponse.status === "COMPLETE") {
+          const text = statusResponse.outputs?.answer || "No results found.";
+          await convertTextToSpeech(text);
+          break;
+        } else if (statusResponse.status === "FAILED") {
+          throw new Error("The run failed. Please try again.");
+        } else if (
+          statusResponse.status === "RUNNING" &&
+          statusResponse.outputs?.answer
+        ) {
+          // Handle intermediate response
+          const text = statusResponse.outputs.answer;
+          await convertTextToSpeech(text);
+          hasReceivedResponse = true;
+        } else if (statusResponse.status === "AWAITING_INPUT") {
+          if (!hasReceivedResponse) {
+            // If we haven't received a response yet, continue polling
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          // If we've received a response and now it's awaiting input, break the loop
+          break;
+        }
+      } else {
+        throw new Error("Unable to fetch run status");
+      }
+
+      // Wait for 2 seconds before checking again
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  } catch (error) {
+    handleError("Error occurred while checking status", error);
+  }
+}
+
+// ... (rest of the existing functions)
 
 function toggleTheme() {
   currentTheme = currentTheme === "light" ? "dark" : "light";
@@ -104,36 +219,57 @@ function setTheme(theme) {
   }
 }
 
-// Main function to run the application
-async function runApp() {
-  const userMessage = elements.userInput.value.trim();
-  if (!userMessage) return;
+function addMessageToChat(content, sender, save = true) {
+  const messageElement = document.createElement("div");
+  messageElement.classList.add("message", `${sender}-message`);
+  messageElement.textContent = content;
 
-  // Display user message
-  addMessageToChat(userMessage, "user");
+  // Insert the new message at the end of the chat container
+  elements.chatContainer.appendChild(messageElement);
 
-  // Clear input field
-  elements.userInput.value = "";
+  // Scroll to the bottom of the chat container
+  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
 
-  setScrapingState();
-
-  try {
-    if (!currentRunId) {
-      // This is the first message, initiate a new run
-      const pageContent = await getPageContent();
-      if (pageContent) {
-        console.log("Page content:", pageContent);
-        // await initiateApiRun(pageContent, userMessage);
-      } else {
-        throw new Error("Failed to retrieve page content");
-      }
-    } else {
-      // This is a subsequent message, send it as an ask
-      await sendAsk(userMessage);
-    }
-  } catch (error) {
-    handleError("Error occurred", error);
+  // Save the message to the messages array and Chrome storage only if save is true
+  if (save) {
+    messages.push({ type: "text", content, sender });
+    saveMessages();
   }
+}
+
+function addThinkingMessage() {
+  const thinkingElement = document.createElement("div");
+  thinkingElement.classList.add(
+    "message",
+    "system-message",
+    "thinking-message"
+  );
+  thinkingElement.textContent = "Thinking...";
+  elements.chatContainer.appendChild(thinkingElement);
+  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
+  return thinkingElement;
+}
+
+function setScrapingState() {
+  elements.sendButton.disabled = true;
+  elements.sendButton.innerHTML =
+    '<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+}
+
+function handleError(message, error) {
+  console.error(message, error);
+  setResultsState();
+  addMessageToChat(`Error: ${error.message}`, "bot");
+}
+
+function setResultsState() {
+  elements.sendButton.disabled = false;
+  elements.sendButton.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send">
+      <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/>
+      <path d="m21.854 2.147-10.94 10.939" />
+    </svg>
+  `;
 }
 
 // Function to get the content of the active tab
@@ -174,361 +310,4 @@ function getTextContent() {
     .trim();
 }
 
-// Function to initiate an API run
-async function initiateApiRun(pageContent, userMessage) {
-  try {
-    const runResponse = await sendApiRequest(
-      "POST",
-      `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
-      {
-        inputs: {
-          page_content: pageContent,
-          question: userMessage,
-        },
-      }
-    );
-
-    console.log("API response:", runResponse);
-
-    if (runResponse && runResponse.runId) {
-      currentRunId = runResponse.runId;
-      lastRunId = runResponse.runId;
-      // Poll for the run status
-      await pollRunStatus(currentRunId);
-    } else {
-      throw new Error("No runId received in the response");
-    }
-  } catch (error) {
-    console.error("Error in initiateApiRun:", error);
-    throw error;
-  }
-}
-
-// Function to poll the run status
-async function pollRunStatus(runId) {
-  try {
-    while (true) {
-      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
-
-      if (statusResponse) {
-        if (statusResponse.status === "COMPLETE") {
-          const text = statusResponse.outputs?.answer || "No results found.";
-          await convertTextToSpeech(text);
-          break;
-        } else if (statusResponse.status === "FAILED") {
-          throw new Error("The run failed. Please try again.");
-        } else if (statusResponse.status === "RUNNING" && statusResponse.ask) {
-          // Handle the ask if present
-          const askContent = statusResponse.ask.content.value;
-          addMessageToChat(askContent, "bot");
-          // Don't break here, continue polling
-        }
-      } else {
-        throw new Error("Unable to fetch run status");
-      }
-
-      // Wait for 5 seconds before checking again
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-  } catch (error) {
-    handleError("Error occurred while checking status", error);
-  }
-}
-
-// Function to send API requests
-function sendApiRequest(method, endpoint, body = null) {
-  const options = {
-    method,
-    headers: {
-      Authorization: `Bearer ${CONFIG.apiKey}`,
-      "Content-Type": "application/json",
-    },
-  };
-
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-
-  return sendMessage({
-    type: "API_REQUEST",
-    url: `${CONFIG.apiBaseUrl}/${endpoint}`,
-    options,
-  });
-}
-
-// Function to send messages to the background script
-function sendMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (response.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve(response.data);
-      }
-    });
-  });
-}
-
-// Function to set the UI state while scraping
-function setScrapingState() {
-  elements.sendButton.disabled = true;
-  elements.sendButton.innerHTML =
-    '<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
-}
-
-// Function to set the UI state after receiving results
-function setResultsState() {
-  elements.sendButton.disabled = false;
-  elements.sendButton.innerHTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send">
-      <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/>
-      <path d="m21.854 2.147-10.94 10.939" />
-    </svg>
-  `;
-}
-
-// Function to handle errors and update the UI accordingly
-function handleError(message, error) {
-  console.error(message, error);
-  setResultsState();
-  addMessageToChat(`Error: ${error.message}`, "bot");
-
-  // Reset the conversation on error
-  resetConversation();
-}
-
-// Add this new function to convert text to speech
-async function convertTextToSpeech(text) {
-  const myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-  myHeaders.append("xi-api-key", CONFIG.elevenLabsApiKey);
-
-  const raw = JSON.stringify({
-    text: text,
-    voice_settings: {
-      stability: 0.1,
-      similarity_boost: 0.3,
-      style: 0.2,
-    },
-  });
-
-  const requestOptions = {
-    method: "POST",
-    headers: myHeaders,
-    body: raw,
-    redirect: "follow",
-  };
-
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${CONFIG.elevenLabsVoiceId}`,
-      requestOptions
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
-    addAudioMessageToChat(audioUrl, "bot");
-  } catch (error) {
-    console.error("Error in text-to-speech conversion:", error);
-    handleError("Error in text-to-speech conversion", error);
-  } finally {
-    // Set the UI back to the non-loading state
-    setResultsState();
-  }
-}
-
-// New function to add audio message to chat
-function addAudioMessageToChat(audioUrl, sender, save = true) {
-  const messageElement = document.createElement("div");
-  messageElement.classList.add("message", `${sender}-message`);
-
-  const audioContainer = document.createElement("div");
-  audioContainer.classList.add("audio-container");
-
-  const audioElement = document.createElement("audio");
-  audioElement.src = audioUrl;
-
-  const playButton = document.createElement("button");
-  playButton.classList.add("play-button");
-  playButton.innerHTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-    </svg>
-  `;
-
-  const timeline = document.createElement("input");
-  timeline.type = "range";
-  timeline.min = 0;
-  timeline.max = 100;
-  timeline.value = 0;
-  timeline.classList.add("timeline");
-
-  audioContainer.appendChild(playButton);
-  audioContainer.appendChild(timeline);
-  messageElement.appendChild(audioContainer);
-
-  // Play/Pause functionality
-  playButton.addEventListener("click", () => {
-    if (audioElement.paused) {
-      audioElement.play();
-      playButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="6" y="4" width="4" height="16"></rect>
-          <rect x="14" y="4" width="4" height="16"></rect>
-        </svg>
-      `;
-    } else {
-      audioElement.pause();
-      playButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-      `;
-    }
-  });
-
-  // Update timeline
-  audioElement.addEventListener("timeupdate", () => {
-    const progress = (audioElement.currentTime / audioElement.duration) * 100;
-    timeline.value = progress;
-  });
-
-  // Seek functionality
-  timeline.addEventListener("input", () => {
-    const time = (timeline.value / 100) * audioElement.duration;
-    audioElement.currentTime = time;
-  });
-
-  // Reset play button when audio ends
-  audioElement.addEventListener("ended", () => {
-    playButton.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-      </svg>
-    `;
-  });
-
-  // Insert the new message at the end of the chat container
-  elements.chatContainer.appendChild(messageElement);
-
-  // Scroll to the bottom of the chat container
-  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
-
-  // Save the message to the messages array and Chrome storage only if save is true
-  if (save) {
-    messages.push({ type: "audio", url: audioUrl, sender });
-    saveMessages();
-  }
-}
-
-// Update this function to handle audio messages
-function addMessageToChat(content, sender, save = true) {
-  const messageElement = document.createElement("div");
-  messageElement.classList.add("message", `${sender}-message`);
-  messageElement.textContent = content;
-
-  // Insert the new message at the end of the chat container
-  elements.chatContainer.appendChild(messageElement);
-
-  // Scroll to the bottom of the chat container
-  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
-
-  // Save the message to the messages array and Chrome storage only if save is true
-  if (save) {
-    messages.push({ type: "text", content, sender });
-    saveMessages();
-  }
-}
-
-function saveMessages() {
-  const conversationKey = `conversation_${currentTabId}`;
-  chrome.storage.local.set({ [conversationKey]: messages }, function () {
-    if (chrome.runtime.lastError) {
-      console.error("Error saving messages:", chrome.runtime.lastError);
-    }
-  });
-}
-
-function loadMessages() {
-  chrome.storage.local.get(["messages"], function (result) {
-    if (chrome.runtime.lastError) {
-      console.error("Error loading messages:", chrome.runtime.lastError);
-    } else if (result.messages) {
-      messages = result.messages;
-      // Only clear and repopulate if the chat container is empty
-      if (elements.chatContainer.children.length === 0) {
-        messages.forEach((message) => {
-          if (message.type === "text") {
-            addMessageToChat(message.content, message.sender, false);
-          } else if (message.type === "audio") {
-            addAudioMessageToChat(message.url, message.sender, false);
-          }
-        });
-      }
-    }
-  });
-}
-
-// Add this new function to handle asks
-async function sendAsk(message) {
-  try {
-    const response = await sendApiRequest(
-      "POST",
-      `runs/${currentRunId}/asks/${lastRunId}`,
-      {
-        type: "text",
-        value: message,
-      }
-    );
-
-    console.log("Ask response:", response);
-
-    if (response && response.runId) {
-      // Update the currentRunId with the new runId from the response
-      currentRunId = response.runId;
-      // Poll for the run status
-      await pollRunStatus(currentRunId);
-    } else {
-      throw new Error("No runId received in the ask response");
-    }
-  } catch (error) {
-    console.error("Error in sendAsk:", error);
-    throw error;
-  }
-}
-
-// Add this new function to handle tab changes
-function handleTabChange(activeInfo) {
-  currentTabId = activeInfo.tabId;
-  loadConversationForTab(currentTabId);
-}
-
-// Add this new function to load the conversation for a tab
-function loadConversationForTab(tabId) {
-  chrome.storage.local.get([`conversation_${tabId}`], function (result) {
-    if (chrome.runtime.lastError) {
-      console.error("Error loading conversation:", chrome.runtime.lastError);
-    } else {
-      messages = result[`conversation_${tabId}`] || [];
-      elements.chatContainer.innerHTML = "";
-      messages.forEach((message) => {
-        if (message.type === "text") {
-          addMessageToChat(message.content, message.sender, false);
-        } else if (message.type === "audio") {
-          addAudioMessageToChat(message.url, message.sender, false);
-        }
-      });
-    }
-  });
-}
-
-// Add this new function to reset the conversation
-function resetConversation() {
-  currentRunId = null;
-  lastRunId = null;
-  messages = [];
-  saveMessages();
-  elements.chatContainer.innerHTML = "";
-}
+// ... (rest of the existing functions)
