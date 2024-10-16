@@ -1,177 +1,129 @@
-let lastRunId = null;
+const CONFIG = {
+  apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
+  orgSlug: "isaac-dyor-d74b42",
+  appSlug: "318cfdc8-ebf9-46a6-beb3-3b1953926f93",
+  version: "latest",
+  apiBaseUrl: "https://api.wordware.ai/v1alpha",
+};
 
 // DOM Elements
 const elements = {
-  scrapeButton: null,
-  result: null,
-  apiKeyInput: null,
-  getAppsButton: null,
-  appsList: null,
-  appDetail: null,
-  appTitle: null,
-  appDescription: null,
-  appInputs: null,
-  backButton: null,
+  sendButton: null,
+  userInput: null,
+  chatContainer: null,
+  themeToggle: null,
+  lightIcon: null,
+  darkIcon: null,
+  logoLight: null,
+  logoDark: null,
 };
 
-// Add these new variables at the top of the file
+let isFirstMessage = true;
+let pageContent = "";
 let currentTheme = "light";
-const themeToggle = document.getElementById("themeToggle");
-
-// Add these new functions at the beginning of the file
-
-function saveAppState(orgSlug, appSlug) {
-  localStorage.setItem("currentAppState", JSON.stringify({ orgSlug, appSlug }));
-}
-
-function loadAppState() {
-  const state = localStorage.getItem("currentAppState");
-  return state ? JSON.parse(state) : null;
-}
-
-function saveSelectedContent(inputName, content) {
-  let selectedContent = JSON.parse(
-    localStorage.getItem("selectedContent") || "{}"
-  );
-  selectedContent[inputName] = content;
-  localStorage.setItem("selectedContent", JSON.stringify(selectedContent));
-}
-
-function loadSelectedContent() {
-  return JSON.parse(localStorage.getItem("selectedContent") || "{}");
-}
-
-// Add this function to handle theme toggling
-function toggleTheme() {
-  const lightIcon = document.querySelector(".light-icon");
-  const darkIcon = document.querySelector(".dark-icon");
-  const logoLight = document.getElementById("logo-light");
-  const logoDark = document.getElementById("logo-dark");
-
-  if (currentTheme === "light") {
-    document.documentElement.classList.remove("light");
-    document.documentElement.classList.add("dark");
-    document.body.classList.remove("light-mode");
-    document.body.classList.add("dark-mode");
-    currentTheme = "dark";
-    lightIcon.style.display = "none";
-    darkIcon.style.display = "block";
-    logoLight.style.display = "none";
-    logoDark.style.display = "block";
-  } else {
-    document.documentElement.classList.remove("dark");
-    document.documentElement.classList.add("light");
-    document.body.classList.remove("dark-mode");
-    document.body.classList.add("light-mode");
-    currentTheme = "light";
-    lightIcon.style.display = "block";
-    darkIcon.style.display = "none";
-    logoLight.style.display = "block";
-    logoDark.style.display = "none";
-  }
-  localStorage.setItem("theme", currentTheme);
-}
-
-// Add this function at the beginning of the file
-function restoreAppState() {
-  const appState = loadAppState();
-  const selectedContent = loadSelectedContent();
-
-  if (appState) {
-    const storedApps = JSON.parse(localStorage.getItem("wordwareApps") || "[]");
-    const app = storedApps.find(
-      (a) => a.orgSlug === appState.orgSlug && a.appSlug === appState.appSlug
-    );
-    if (app) {
-      displayAppDetail(app, appState.orgSlug, appState.appSlug);
-      return true; // App state was restored
-    }
-  }
-  return false; // No app state to restore
-}
 
 // Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
 
 function initializeApp() {
   // Get references to DOM elements
-  elements.scrapeButton = document.getElementById("scrapeButton");
-  elements.result = document.getElementById("result");
-  elements.apiKeyInput = document.getElementById("apiKeyInput");
-  elements.getAppsButton = document.getElementById("getAppsButton");
-  elements.appsList = document.getElementById("appsList");
-  elements.appDetail = document.getElementById("appDetail");
-  elements.appTitle = document.getElementById("appTitle");
-  elements.appDescription = document.getElementById("appDescription");
-  elements.appInputs = document.getElementById("appInputs");
-  elements.backButton = document.getElementById("backButton");
+  elements.sendButton = document.getElementById("sendButton");
+  elements.userInput = document.getElementById("userInput");
+  elements.chatContainer = document.getElementById("chatContainer");
+  elements.themeToggle = document.getElementById("themeToggle");
+  elements.lightIcon = document.querySelector(".light-icon");
+  elements.darkIcon = document.querySelector(".dark-icon");
+  elements.logoLight = document.getElementById("logo-light");
+  elements.logoDark = document.getElementById("logo-dark");
 
-  // Check for stored API key and apps
-  const storedApiKey = localStorage.getItem("wordwareApiKey");
-  const storedApps = localStorage.getItem("wordwareApps");
+  // Add click event listener to the send button
+  elements.sendButton.addEventListener("click", handleSendMessage);
 
-  if (storedApiKey) {
-    elements.apiKeyInput.value = storedApiKey;
-  }
+  // Add keypress event listener to the input field
+  elements.userInput.addEventListener("keypress", (event) => {
+    if (event.key === "Enter") {
+      handleSendMessage();
+    }
+  });
 
-  if (storedApps) {
-    displayAppsList(JSON.parse(storedApps));
-  }
+  // Add click event listener to the theme toggle button
+  elements.themeToggle.addEventListener("click", toggleTheme);
 
-  // Always show the API key input and Get Apps button
-  elements.apiKeyInput.style.display = "block";
-  elements.getAppsButton.style.display = "block";
-
-  // Add click event listener to the get apps button
-  elements.getAppsButton.addEventListener("click", getApps);
-
-  // Add click event listener to the back button
-  elements.backButton.addEventListener("click", showAppsList);
+  // Get the page content when the extension is opened
+  getPageContent()
+    .then((content) => {
+      pageContent = content;
+    })
+    .catch((error) => {
+      console.error("Error getting page content:", error);
+    });
 
   // Initialize theme
   currentTheme = localStorage.getItem("theme") || "light";
-  const lightIcon = document.querySelector(".light-icon");
-  const darkIcon = document.querySelector(".dark-icon");
-  const logoLight = document.getElementById("logo-light");
-  const logoDark = document.getElementById("logo-dark");
+  setTheme(currentTheme);
+}
 
-  if (currentTheme === "dark") {
+function toggleTheme() {
+  currentTheme = currentTheme === "light" ? "dark" : "light";
+  setTheme(currentTheme);
+  localStorage.setItem("theme", currentTheme);
+}
+
+function setTheme(theme) {
+  if (theme === "dark") {
     document.documentElement.classList.add("dark");
-    document.body.classList.add("dark-mode");
-    lightIcon.style.display = "none";
-    darkIcon.style.display = "block";
-    logoLight.style.display = "none";
-    logoDark.style.display = "block";
+    elements.lightIcon.style.display = "none";
+    elements.darkIcon.style.display = "block";
+    elements.logoLight.style.display = "none";
+    elements.logoDark.style.display = "block";
   } else {
-    document.documentElement.classList.add("light");
-    document.body.classList.add("light-mode");
-    lightIcon.style.display = "block";
-    darkIcon.style.display = "none";
-    logoLight.style.display = "block";
-    logoDark.style.display = "none";
-  }
-
-  // Add event listener for theme toggle
-  themeToggle.addEventListener("click", toggleTheme);
-
-  // Try to restore the app state
-  const appStateRestored = restoreAppState();
-
-  // If no app state was restored, show the home view and clear any stale app state
-  if (!appStateRestored) {
-    localStorage.removeItem("currentAppState");
-    showHomeView();
+    document.documentElement.classList.remove("dark");
+    elements.lightIcon.style.display = "block";
+    elements.darkIcon.style.display = "none";
+    elements.logoLight.style.display = "block";
+    elements.logoDark.style.display = "none";
   }
 }
 
-function showHomeView() {
-  document.getElementById("homeView").style.display = "block";
-  document.getElementById("appDetailView").style.display = "none";
-}
+async function handleSendMessage() {
+  const userMessage = elements.userInput.value.trim();
+  if (userMessage === "") return;
 
-function showAppDetailView() {
-  document.getElementById("homeView").style.display = "none";
-  document.getElementById("appDetailView").style.display = "block";
+  // Display user message
+  addMessageToChat(userMessage, "user");
+
+  // Clear input field
+  elements.userInput.value = "";
+
+  // Disable input and button while processing
+  elements.userInput.disabled = true;
+  elements.sendButton.disabled = true;
+
+  try {
+    const inputs = isFirstMessage
+      ? { user_input: userMessage, page_content: pageContent }
+      : { user_input: userMessage };
+
+    const response = await sendApiRequest(
+      "POST",
+      `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
+      { inputs: inputs }
+    );
+
+    if (response.runId) {
+      await pollRunStatus(response.runId);
+    } else {
+      throw new Error("No runId received in the response");
+    }
+
+    isFirstMessage = false;
+  } catch (error) {
+    handleError("Error occurred while sending message", error);
+  } finally {
+    // Re-enable input and button
+    elements.userInput.disabled = false;
+    elements.sendButton.disabled = false;
+  }
 }
 
 // Function to get the content of the active tab
@@ -213,352 +165,42 @@ function getTextContent() {
 }
 
 // Function to send API requests
-function sendApiRequest(method, endpoint, body = null, apiKey = null) {
+function sendApiRequest(method, endpoint, body = null) {
   const options = {
     method,
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${CONFIG.apiKey}`,
     },
   };
-
-  options.headers.Authorization = `Bearer ${apiKey}`;
 
   if (body) {
     options.body = JSON.stringify(body);
   }
 
-  return sendMessage({
-    type: "API_REQUEST",
-    url: `https://api.wordware.ai/v1alpha/${endpoint}`,
-    options,
-  });
-}
-
-// Function to send messages to the background script
-function sendMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (response.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve(response.data);
-      }
-    });
-  });
+  return fetch(`${CONFIG.apiBaseUrl}/${endpoint}`, options).then((response) =>
+    response.json()
+  );
 }
 
 // Function to handle errors and update the UI accordingly
 function handleError(message, error) {
   console.error(message, error);
-  if (elements.scrapeButton) {
-    elements.scrapeButton.disabled = false;
-    elements.scrapeButton.textContent = "Scrape Contacts";
-  }
-  if (elements.result) {
-    elements.result.textContent = `Error: ${error.message}`;
-  }
-
-  // Also reset the Get Apps button
-  if (elements.getAppsButton) {
-    elements.getAppsButton.disabled = false;
-    elements.getAppsButton.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-ccw">
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-        <path d="M3 3v5h5"/>
-        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-        <path d="M16 16h5v5"/>
-      </svg>
-    `;
-  }
+  elements.sendButton.disabled = false;
+  elements.sendButton.textContent = "Send Page Content";
+  elements.result.textContent = `Error: ${error.message}`;
 }
 
-async function getApps() {
-  const apiKey = elements.apiKeyInput.value.trim();
-  if (!apiKey) {
-    alert("Please enter an API key");
-    return;
-  }
-
-  elements.getAppsButton.disabled = true;
-  elements.getAppsButton.innerHTML =
-    '<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
-
-  try {
-    const apps = await sendApiRequest("GET", "apps", null, apiKey);
-    const appsWithDetails = await Promise.all(
-      apps.map(async (app) => {
-        const versions = await sendApiRequest(
-          "GET",
-          `apps/${app.orgSlug}/${app.appSlug}/versions`,
-          null,
-          apiKey
-        );
-        const latestVersion = versions[0];
-        return {
-          ...app,
-          ...latestVersion, // This will include inputs, description, and other version-specific details
-          title: latestVersion.title || app.appSlug,
-        };
-      })
-    );
-
-    // Store the apps and API key in local storage
-    localStorage.setItem("wordwareApps", JSON.stringify(appsWithDetails));
-    localStorage.setItem("wordwareApiKey", apiKey);
-
-    displayAppsList(appsWithDetails);
-  } catch (error) {
-    handleError("Error occurred while fetching apps", error);
-  } finally {
-    elements.getAppsButton.disabled = false;
-    elements.getAppsButton.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-ccw">
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-        <path d="M3 3v5h5"/>
-        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-        <path d="M16 16h5v5"/>
-      </svg>
-    `;
-  }
-}
-
-function displayAppsList(apps) {
-  const currentAppsList = elements.appsList.innerHTML;
-  const newAppsList = apps
-    .map(
-      (app) => `
-    <div class="app-item" data-org-slug="${app.orgSlug}" data-app-slug="${
-        app.appSlug
-      }">
-      <div class="app-title">${app.title || app.appSlug}</div>
-    </div>
-  `
-    )
-    .join("");
-
-  if (currentAppsList !== newAppsList) {
-    elements.appsList.innerHTML = newAppsList;
-    elements.appsList.addEventListener("click", handleAppClick);
-  }
-
-  showHomeView();
-}
-
-async function handleAppClick(event) {
-  const appItem = event.target.closest(".app-item");
-  if (!appItem) return;
-
-  const orgSlug = appItem.dataset.orgSlug;
-  const appSlug = appItem.dataset.appSlug;
-  const apiKey = elements.apiKeyInput.value.trim();
-
-  try {
-    const versions = await sendApiRequest(
-      "GET",
-      `apps/${orgSlug}/${appSlug}/versions`,
-      null,
-      apiKey
-    );
-    const latestVersion = versions[0];
-
-    // Save the current app state before displaying the app detail
-    saveAppState(orgSlug, appSlug);
-
-    displayAppDetail(latestVersion, orgSlug, appSlug);
-  } catch (error) {
-    handleError("Error occurred while fetching app details", error);
-  }
-}
-
-function displayAppDetail(app, orgSlug, appSlug) {
-  elements.appTitle.textContent = app.title || appSlug;
-  elements.appDescription.textContent =
-    app.description || "No description available";
-
-  const selectedContent = loadSelectedContent();
-
-  if (Array.isArray(app.inputs)) {
-    elements.appInputs.innerHTML = app.inputs
-      .map(
-        (input) => `
-      <div class="input-field">
-        <label for="${input.name}" class="text-lg font-semibold">${
-          input.name
-        }</label>
-        <div class="input-container">
-          ${getInputElement(input)}
-        </div>
-        <div class="include-content-container">
-          <input type="checkbox" id="include-content-${
-            input.name
-          }" class="include-content-checkbox">
-          <label for="include-content-${
-            input.name
-          }" class="text-sm">Include page content</label>
-        </div>
-      </div>
-    `
-      )
-      .join("");
-
-    app.inputs.forEach((input) => {
-      const inputElement = document.getElementById(input.name);
-      const includeContentCheckbox = document.getElementById(
-        `include-content-${input.name}`
-      );
-
-      if (selectedContent[input.name]) {
-        inputElement.value = selectedContent[input.name];
-        includeContentCheckbox.checked = true;
-      }
-
-      includeContentCheckbox.addEventListener("change", (event) => {
-        handleIncludeContentChange(event, input.name);
-      });
-    });
-  } else {
-    elements.appInputs.innerHTML = "<p>No inputs available for this app.</p>";
-  }
-
-  // Add "Run App" button
-  elements.appInputs.innerHTML += `
-    <button id="runAppButton" class="mt-4">Run App</button>
-    <div id="appResult"></div>
-  `;
-
-  showAppDetailView();
-
-  // Add event listener for the "Run App" button
-  document
-    .getElementById("runAppButton")
-    .addEventListener("click", () => runApp(app, orgSlug, appSlug));
-}
-
-function getInputElement(input) {
-  switch (input.type) {
-    case "longtext":
-      return `<textarea id="${input.name}" placeholder="${input.description}" class="w-full"></textarea>`;
-    case "text":
-    case "image":
-    case "audio":
-    default:
-      return `<input type="text" id="${input.name}" placeholder="${input.description}" class="w-full">`;
-  }
-}
-
-function showAppsList() {
-  // Clear the current app state when going back to the app list
-  localStorage.removeItem("currentAppState");
-  showHomeView();
-}
-
-function handleIncludeContentChange(event, inputName) {
-  const inputElement = document.getElementById(inputName);
-  const selectedContent = loadSelectedContent();
-
-  if (event.target.checked) {
-    if (selectedContent[inputName]) {
-      inputElement.value = selectedContent[inputName];
-    } else {
-      getPageContent()
-        .then((pageContent) => {
-          saveSelectedContent(inputName, pageContent);
-          inputElement.value = pageContent;
-        })
-        .catch((error) => {
-          console.error("Error getting page content:", error);
-          alert("Failed to get page content. Please try again.");
-        });
-    }
-  } else {
-    inputElement.value = "";
-  }
-}
-
-async function runApp(app, orgSlug, appSlug) {
-  const apiKey = elements.apiKeyInput.value.trim();
-  if (!apiKey) {
-    alert("Please enter an API key");
-    return;
-  }
-
-  const runAppButton = document.getElementById("runAppButton");
-  const appResult = document.getElementById("appResult");
-
-  runAppButton.disabled = true;
-  runAppButton.innerHTML = '<span class="loader"></span> Running App...';
-  appResult.textContent = "";
-
-  try {
-    const inputs = {};
-    app.inputs.forEach((input) => {
-      const inputElement = document.getElementById(input.name);
-      const includeContentCheckbox = document.getElementById(
-        `include-content-${input.name}`
-      );
-
-      if (includeContentCheckbox.checked) {
-        const selectedContent = loadSelectedContent();
-        inputs[input.name] = selectedContent[input.name] || inputElement.value;
-      } else {
-        inputs[input.name] = inputElement.value;
-      }
-    });
-
-    console.log("Sending run request with inputs:", inputs);
-
-    const runResponse = await sendApiRequest(
-      "POST",
-      `apps/${orgSlug}/${appSlug}/${app.version}/runs`,
-      { inputs },
-      apiKey
-    );
-
-    console.log("Initial run response:", runResponse);
-
-    if (runResponse && runResponse.runId) {
-      await pollRunStatus(runResponse.runId, apiKey);
-    } else {
-      throw new Error("No runId received in the response");
-    }
-  } catch (error) {
-    handleError("Error occurred while running the app", error);
-  } finally {
-    runAppButton.disabled = false;
-    runAppButton.textContent = "Run App";
-  }
-}
-
-async function pollRunStatus(runId, apiKey) {
-  const appResult = document.getElementById("appResult");
-
+async function pollRunStatus(runId) {
   try {
     while (true) {
-      const statusResponse = await sendApiRequest(
-        "GET",
-        `runs/${runId}`,
-        null,
-        apiKey
-      );
-
-      console.log("Run status response:", statusResponse);
+      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
 
       if (statusResponse.status === "COMPLETE") {
-        if (
-          statusResponse.outputs &&
-          Object.keys(statusResponse.outputs).length > 0
-        ) {
-          // Dynamically parse and display the outputs
-          let outputContent = "";
-          for (const [key, value] of Object.entries(statusResponse.outputs)) {
-            outputContent += `${key}:\n${JSON.stringify(value, null, 2)}\n\n`;
-          }
-          appResult.textContent = outputContent;
+        if (statusResponse.outputs && statusResponse.outputs.audio_url) {
+          addMessageToChat(statusResponse.outputs.audio_url, "bot");
         } else {
-          appResult.textContent =
-            "Run completed, but no outputs were returned.\n\n";
-          appResult.textContent +=
-            "Full response:\n" + JSON.stringify(statusResponse, null, 2);
+          addMessageToChat("No audio response received.", "bot");
         }
         break;
       } else if (statusResponse.status === "FAILED") {
@@ -566,78 +208,38 @@ async function pollRunStatus(runId, apiKey) {
           "The run failed. Error: " +
             (statusResponse.errors?.[0]?.message || "Unknown error")
         );
-      } else if (statusResponse.ask) {
-        console.log("Ask received:", statusResponse.ask);
-        appResult.textContent =
-          "The app is asking for additional input:\n" +
-          JSON.stringify(statusResponse.ask, null, 2);
-        // You may want to implement a way to handle asks here
-        break;
       }
 
       if (statusResponse.status !== "RUNNING") {
-        appResult.textContent =
-          "Run stopped with status: " + statusResponse.status + "\n\n";
-        appResult.textContent +=
-          "Full response:\n" + JSON.stringify(statusResponse, null, 2);
+        addMessageToChat(
+          `Run stopped with status: ${statusResponse.status}`,
+          "bot"
+        );
         break;
       }
 
-      // Wait for 5 seconds before polling again
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Wait for 2 seconds before polling again
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   } catch (error) {
     handleError("Error occurred while polling run status", error);
   }
 }
 
-// Add this new function to handle messages from the content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "contentSelected") {
-    const { inputName, content } = message;
-    const selectButton = document.querySelector(
-      `.select-page-content[data-input="${inputName}"]`
-    );
-    const badgeElement = document.getElementById(`badge-${inputName}`);
-    const inputElement = document.getElementById(inputName);
+function addMessageToChat(content, sender) {
+  const messageElement = document.createElement("div");
+  messageElement.classList.add("message", `${sender}-message`);
 
-    selectButton.dataset.pageContent = content;
-    badgeElement.style.display = "inline-flex";
-    inputElement.value = content;
-
-    // Save the selected content
-    saveSelectedContent(inputName, content);
-
-    sendResponse({ success: true });
-  } else if (message.action === "reopenPopup") {
-    // This message is sent from the background script
-    // Restore the app state here
-    restoreAppState();
+  if (sender === "bot" && content.startsWith("http")) {
+    // It's an audio URL
+    const audio = document.createElement("audio");
+    audio.src = content;
+    audio.controls = true;
+    messageElement.appendChild(audio);
+  } else {
+    messageElement.textContent = content;
   }
-});
 
-function chromeStorageAvailable() {
-  return chrome && chrome.storage && chrome.storage.local;
+  elements.chatContainer.appendChild(messageElement);
+  elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
 }
-
-// Update the CSS for the new layout
-const style = document.createElement("style");
-style.textContent = `
-  .input-field {
-    margin-bottom: 1rem;
-  }
-  .input-container {
-    margin-top: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-  .include-content-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .include-content-checkbox {
-    width: 1rem;
-    height: 1rem;
-  }
-`;
-document.head.appendChild(style);

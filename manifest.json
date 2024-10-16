@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Wordware Contact Scraper",
-  "description": "Scrapes contact information from websites",
+  "name": "Wordware Talk With Webpage",
+  "description": "Talk with your webpage",
   "version": "1.0",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://api.wordware.ai/"],
