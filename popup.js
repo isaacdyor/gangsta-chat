@@ -3,7 +3,7 @@ const CONFIG = {
   apiKey: "ww-EJMMJyem1tLB8E7PNXcOQto2sxllGFDUnIc96uJknQmxurpaKrihUT",
   orgSlug: "isaac-dyor-d74b42",
   appSlug: "ad64f510-cc08-4b42-9cfd-ba6089397e16",
-  version: "1.2",
+  version: "1.4",
   apiBaseUrl: "https://api.wordware.ai/v1alpha",
   elevenLabsApiKey: "sk_019aa886d22e7e4fa060bf0f216ed6215dd9fb3f1e4bfc33",
   elevenLabsVoiceId: "bIHbv24MWmeRgasZH58o",
@@ -28,6 +28,11 @@ const elements = {
 
 let currentTheme = "light";
 let messages = [];
+
+// Add these variables at the top of your file, after the CONFIG object
+let currentRunId = null;
+let currentTabId = null;
+let tabConversations = {};
 
 // Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
@@ -64,6 +69,17 @@ function initializeApp() {
 
   // Load stored messages
   loadMessages();
+
+  // Add this new listener
+  chrome.tabs.onActivated.addListener(handleTabChange);
+
+  // Initialize currentTabId and load the conversation for the current tab
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    if (tab) {
+      currentTabId = tab.id;
+      loadConversationForTab(currentTabId);
+    }
+  });
 }
 
 function toggleTheme() {
@@ -102,16 +118,18 @@ async function runApp() {
   setScrapingState();
 
   try {
-    // Get the content of the active tab
-    const pageContent = await getPageContent();
-    if (pageContent) {
-      // Console log the page content
-      console.log("Page content:", pageContent);
-
-      // Initiate the API run with the retrieved content and user message
-      await initiateApiRun(pageContent, userMessage);
+    if (!currentRunId) {
+      // This is the first message, initiate a new run
+      const pageContent = await getPageContent();
+      if (pageContent) {
+        console.log("Page content:", pageContent);
+        // await initiateApiRun(pageContent, userMessage);
+      } else {
+        throw new Error("Failed to retrieve page content");
+      }
     } else {
-      throw new Error("Failed to retrieve page content");
+      // This is a subsequent message, send it as an ask
+      await sendAsk(userMessage);
     }
   } catch (error) {
     handleError("Error occurred", error);
@@ -159,14 +177,12 @@ function getTextContent() {
 // Function to initiate an API run
 async function initiateApiRun(pageContent, userMessage) {
   try {
-    // Send a POST request to start a new run
     const runResponse = await sendApiRequest(
       "POST",
       `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
       {
         inputs: {
           page_content: pageContent,
-          // page_content: "test",
           question: userMessage,
         },
       }
@@ -175,9 +191,10 @@ async function initiateApiRun(pageContent, userMessage) {
     console.log("API response:", runResponse);
 
     if (runResponse && runResponse.runId) {
+      currentRunId = runResponse.runId;
       lastRunId = runResponse.runId;
       // Poll for the run status
-      await pollRunStatus(lastRunId);
+      await pollRunStatus(currentRunId);
     } else {
       throw new Error("No runId received in the response");
     }
@@ -191,7 +208,6 @@ async function initiateApiRun(pageContent, userMessage) {
 async function pollRunStatus(runId) {
   try {
     while (true) {
-      // Check the status of the run
       const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
 
       if (statusResponse) {
@@ -201,6 +217,11 @@ async function pollRunStatus(runId) {
           break;
         } else if (statusResponse.status === "FAILED") {
           throw new Error("The run failed. Please try again.");
+        } else if (statusResponse.status === "RUNNING" && statusResponse.ask) {
+          // Handle the ask if present
+          const askContent = statusResponse.ask.content.value;
+          addMessageToChat(askContent, "bot");
+          // Don't break here, continue polling
         }
       } else {
         throw new Error("Unable to fetch run status");
@@ -271,6 +292,9 @@ function handleError(message, error) {
   console.error(message, error);
   setResultsState();
   addMessageToChat(`Error: ${error.message}`, "bot");
+
+  // Reset the conversation on error
+  resetConversation();
 }
 
 // Add this new function to convert text to speech
@@ -419,7 +443,8 @@ function addMessageToChat(content, sender, save = true) {
 }
 
 function saveMessages() {
-  chrome.storage.local.set({ messages: messages }, function () {
+  const conversationKey = `conversation_${currentTabId}`;
+  chrome.storage.local.set({ [conversationKey]: messages }, function () {
     if (chrome.runtime.lastError) {
       console.error("Error saving messages:", chrome.runtime.lastError);
     }
@@ -444,4 +469,66 @@ function loadMessages() {
       }
     }
   });
+}
+
+// Add this new function to handle asks
+async function sendAsk(message) {
+  try {
+    const response = await sendApiRequest(
+      "POST",
+      `runs/${currentRunId}/asks/${lastRunId}`,
+      {
+        type: "text",
+        value: message,
+      }
+    );
+
+    console.log("Ask response:", response);
+
+    if (response && response.runId) {
+      // Update the currentRunId with the new runId from the response
+      currentRunId = response.runId;
+      // Poll for the run status
+      await pollRunStatus(currentRunId);
+    } else {
+      throw new Error("No runId received in the ask response");
+    }
+  } catch (error) {
+    console.error("Error in sendAsk:", error);
+    throw error;
+  }
+}
+
+// Add this new function to handle tab changes
+function handleTabChange(activeInfo) {
+  currentTabId = activeInfo.tabId;
+  loadConversationForTab(currentTabId);
+}
+
+// Add this new function to load the conversation for a tab
+function loadConversationForTab(tabId) {
+  chrome.storage.local.get([`conversation_${tabId}`], function (result) {
+    if (chrome.runtime.lastError) {
+      console.error("Error loading conversation:", chrome.runtime.lastError);
+    } else {
+      messages = result[`conversation_${tabId}`] || [];
+      elements.chatContainer.innerHTML = "";
+      messages.forEach((message) => {
+        if (message.type === "text") {
+          addMessageToChat(message.content, message.sender, false);
+        } else if (message.type === "audio") {
+          addAudioMessageToChat(message.url, message.sender, false);
+        }
+      });
+    }
+  });
+}
+
+// Add this new function to reset the conversation
+function resetConversation() {
+  currentRunId = null;
+  lastRunId = null;
+  messages = [];
+  saveMessages();
+  elements.chatContainer.innerHTML = "";
 }
