@@ -9,12 +9,14 @@ const CONFIG = {
   elevenLabsVoiceId: "bIHbv24MWmeRgasZH58o",
 };
 
-// Store the last run ID for potential future use
+// Global variables
 let lastRunId = null;
 let currentRunId = null;
 let currentTabId = null;
 let currentAskId = null;
 let tabConversations = {};
+let currentTheme = "light";
+let messages = [];
 
 // DOM Elements
 const elements = {
@@ -30,12 +32,10 @@ const elements = {
   chatContainer: null,
 };
 
-let currentTheme = "light";
-let messages = [];
-
 // Initialize the application when the DOM is fully loaded
 document.addEventListener("DOMContentLoaded", initializeApp);
 
+// Application Initialization
 function initializeApp() {
   // Get references to DOM elements
   elements.sendButton = document.getElementById("sendButton");
@@ -49,17 +49,13 @@ function initializeApp() {
   elements.logoDark = document.getElementById("logo-dark");
   elements.chatContainer = document.getElementById("chatContainer");
 
-  // Add click event listener to the send button
+  // Add event listeners
   elements.sendButton.addEventListener("click", runApp);
-
-  // Add keypress event listener to the input field
   elements.userInput.addEventListener("keypress", function (event) {
     if (event.key === "Enter") {
       runApp();
     }
   });
-
-  // Add click event listener to the theme toggle button
   elements.themeToggle.addEventListener("click", toggleTheme);
 
   // Initialize theme
@@ -78,6 +74,205 @@ function initializeApp() {
   });
 }
 
+// Main Application Logic
+async function runApp() {
+  const userMessage = elements.userInput.value.trim();
+  if (!userMessage) return;
+
+  addMessageToChat(userMessage, "user");
+  elements.userInput.value = "";
+  setScrapingState();
+
+  try {
+    if (!currentRunId) {
+      const pageContent = await getPageContent();
+      if (pageContent) {
+        console.log("Page content:", pageContent);
+        await initiateApiRun(pageContent, userMessage);
+      } else {
+        throw new Error("Failed to retrieve page content");
+      }
+    } else {
+      await answerAsk(userMessage);
+    }
+  } catch (error) {
+    handleError("Error occurred", error);
+  } finally {
+    setResultsState();
+  }
+}
+
+// API Interaction Functions
+async function initiateApiRun(pageContent, userMessage) {
+  try {
+    const runResponse = await sendApiRequest(
+      "POST",
+      `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
+      {
+        inputs: {
+          page_content: pageContent,
+          question: userMessage,
+        },
+      }
+    );
+
+    console.log("API response:", runResponse);
+
+    if (runResponse && runResponse.runId) {
+      await pollRunStatus(runResponse.runId);
+      return runResponse;
+    } else {
+      throw new Error("No runId received in the response");
+    }
+  } catch (error) {
+    console.error("Error in initiateApiRun:", error);
+    throw error;
+  }
+}
+
+async function answerAsk(userMessage) {
+  try {
+    const askResponse = await sendApiRequest(
+      "POST",
+      `runs/${currentRunId}/asks/${currentAskId}`,
+      {
+        type: "text",
+        value: userMessage,
+      }
+    );
+
+    console.log("Ask response:", askResponse);
+
+    if (askResponse && askResponse.runId) {
+      await pollRunStatus(askResponse.runId);
+    } else {
+      throw new Error("Invalid ask response");
+    }
+  } catch (error) {
+    console.error("Error in answerAsk:", error);
+    throw error;
+  }
+}
+
+// Function to poll the run status
+async function pollRunStatus(runId) {
+  try {
+    let hasReceivedResponse = false;
+    while (true) {
+      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
+      console.log("Status response:", statusResponse);
+      if (statusResponse) {
+        if (statusResponse.status === "AWAITING_INPUT") {
+          const text =
+            statusResponse.outputs?.new_loop?.[
+              statusResponse.outputs.new_loop.length - 1
+            ]?.answer || "No results found.";
+          await convertTextToSpeech(text);
+          currentRunId = runId;
+          currentAskId = statusResponse.ask.askId;
+          saveMessages();
+          break;
+        } else if (statusResponse.status === "FAILED") {
+          throw new Error("The run failed. Please try again.");
+        } else if (
+          statusResponse.status === "RUNNING" &&
+          statusResponse.outputs?.answer
+        ) {
+          const text = statusResponse.outputs.answer;
+          await convertTextToSpeech(text);
+          hasReceivedResponse = true;
+        } else if (statusResponse.status === "AWAITING_INPUT") {
+          if (!hasReceivedResponse) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          break;
+        }
+      } else {
+        throw new Error("Unable to fetch run status");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  } catch (error) {
+    handleError("Error occurred while checking status", error);
+  }
+}
+
+// Function to send API requests
+function sendApiRequest(method, endpoint, body = null) {
+  const options = {
+    method,
+    headers: {
+      Authorization: `Bearer ${CONFIG.apiKey}`,
+      "Content-Type": "application/json",
+    },
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  return sendMessage({
+    type: "API_REQUEST",
+    url: `${CONFIG.apiBaseUrl}/${endpoint}`,
+    options,
+  });
+}
+
+// Function to send messages to the background script
+function sendMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (response.error) {
+        reject(new Error(response.error));
+      } else {
+        resolve(response.data);
+      }
+    });
+  });
+}
+
+// Text-to-Speech Function
+async function convertTextToSpeech(text) {
+  const myHeaders = new Headers();
+  myHeaders.append("Content-Type", "application/json");
+  myHeaders.append("xi-api-key", CONFIG.elevenLabsApiKey);
+
+  const raw = JSON.stringify({
+    text: text,
+    voice_settings: {
+      stability: 0.1,
+      similarity_boost: 0.3,
+      style: 0.2,
+    },
+  });
+
+  const requestOptions = {
+    method: "POST",
+    headers: myHeaders,
+    body: raw,
+    redirect: "follow",
+  };
+
+  try {
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${CONFIG.elevenLabsVoiceId}`,
+      requestOptions
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    addAudioMessageToChat(audioUrl, "bot");
+  } catch (error) {
+    console.error("Error in text-to-speech conversion:", error);
+    handleError("Error in text-to-speech conversion", error);
+  }
+}
+
+// Tab and Conversation Management Functions
 function handleTabChange(activeInfo) {
   currentTabId = activeInfo.tabId;
   loadConversationForTab(currentTabId);
@@ -110,120 +305,7 @@ function saveMessages() {
   });
 }
 
-// ... (rest of the existing functions)
-
-// Modify the runApp function
-async function runApp() {
-  const userMessage = elements.userInput.value.trim();
-  if (!userMessage) return;
-
-  // Display user message
-  addMessageToChat(userMessage, "user");
-
-  // Clear input field and unfocus it
-  elements.userInput.value = "";
-
-  setScrapingState();
-
-  try {
-    if (!currentRunId) {
-      // This is the first message, initiate a new run
-      const pageContent = await getPageContent();
-      if (pageContent) {
-        console.log("Page content:", pageContent);
-        await initiateApiRun(pageContent, userMessage);
-      } else {
-        throw new Error("Failed to retrieve page content");
-      }
-    } else {
-      // This is a subsequent message, send it as an ask
-      await answerAsk(userMessage);
-    }
-  } catch (error) {
-    handleError("Error occurred", error);
-  } finally {
-    setResultsState();
-  }
-}
-
-async function answerAsk(userMessage) {
-  try {
-    const askResponse = await sendApiRequest(
-      "POST",
-      `runs/${currentRunId}/asks/${currentAskId}`,
-      {
-        type: "text",
-        value: userMessage,
-      }
-    );
-
-    console.log("Ask response:", askResponse);
-
-    if (askResponse && askResponse.runId) {
-      // Fetch the updated run status
-      await pollRunStatus(askResponse.runId);
-    } else {
-      throw new Error("Invalid ask response");
-    }
-  } catch (error) {
-    console.error("Error in answerAsk:", error);
-    throw error;
-  }
-}
-
-// ... (rest of the existing functions)
-
-// Function to poll the run status
-async function pollRunStatus(runId) {
-  try {
-    let hasReceivedResponse = false;
-    while (true) {
-      const statusResponse = await sendApiRequest("GET", `runs/${runId}`);
-
-      if (statusResponse) {
-        if (statusResponse.status === "AWAITING_INPUT") {
-          const text =
-            statusResponse.outputs?.new_loop?.[
-              statusResponse.outputs.new_loop.length - 1
-            ]?.answer || "No results found.";
-          await convertTextToSpeech(text);
-          currentRunId = runId;
-          currentAskId = statusResponse.ask.askId;
-          saveMessages(); // Save after updating currentRunId and currentAskId
-          break;
-        } else if (statusResponse.status === "FAILED") {
-          throw new Error("The run failed. Please try again.");
-        } else if (
-          statusResponse.status === "RUNNING" &&
-          statusResponse.outputs?.answer
-        ) {
-          // Handle intermediate response
-          const text = statusResponse.outputs.answer;
-          await convertTextToSpeech(text);
-          hasReceivedResponse = true;
-        } else if (statusResponse.status === "AWAITING_INPUT") {
-          if (!hasReceivedResponse) {
-            // If we haven't received a response yet, continue polling
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            continue;
-          }
-          // If we've received a response and now it's awaiting input, break the loop
-          break;
-        }
-      } else {
-        throw new Error("Unable to fetch run status");
-      }
-
-      // Wait for 2 seconds before checking again
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-  } catch (error) {
-    handleError("Error occurred while checking status", error);
-  }
-}
-
-// ... (rest of the existing functions)
-
+// UI Management Functions
 function toggleTheme() {
   currentTheme = currentTheme === "light" ? "dark" : "light";
   setTheme(currentTheme);
@@ -246,24 +328,22 @@ function setTheme(theme) {
   }
 }
 
+// Function to add a text message to the chat
 function addMessageToChat(content, sender, save = true) {
   const messageElement = document.createElement("div");
   messageElement.classList.add("message", `${sender}-message`);
   messageElement.textContent = content;
 
-  // Insert the new message at the end of the chat container
   elements.chatContainer.appendChild(messageElement);
-
-  // Scroll to the bottom of the chat container
   elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
 
-  // Save the message to the messages array and Chrome storage only if save is true
   if (save) {
     messages.push({ type: "text", content, sender });
     saveMessages();
   }
 }
 
+// Function to add an audio message to the chat
 function addAudioMessageToChat(audioUrl, sender, save = true) {
   console.log(`Adding audio message to chat: ${audioUrl} (${sender})`);
   const messageElement = document.createElement("div");
@@ -335,13 +415,9 @@ function addAudioMessageToChat(audioUrl, sender, save = true) {
     `;
   });
 
-  // Insert the new message at the end of the chat container
   elements.chatContainer.appendChild(messageElement);
-
-  // Scroll to the bottom of the chat container
   elements.chatContainer.scrollTop = elements.chatContainer.scrollHeight;
 
-  // Save the message to the messages array and Chrome storage only if save is true
   if (save) {
     messages.push({ type: "audio", url: audioUrl, sender });
     console.log(`Messages array updated, length: ${messages.length}`);
@@ -349,18 +425,21 @@ function addAudioMessageToChat(audioUrl, sender, save = true) {
   }
 }
 
+// Function to set the UI state while scraping
 function setScrapingState() {
   elements.sendButton.disabled = true;
   elements.sendButton.innerHTML =
     '<svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 }
 
+// Function to handle errors
 function handleError(message, error) {
   console.error(message, error);
   setResultsState();
   addMessageToChat(`Error: ${error.message}`, "bot");
 }
 
+// Function to set the UI state after results are received
 function setResultsState() {
   elements.sendButton.disabled = false;
   elements.sendButton.innerHTML = `
@@ -407,101 +486,4 @@ function getTextContent() {
   return (tempElement.textContent || tempElement.innerText)
     .replace(/\s+/g, " ")
     .trim();
-}
-
-async function initiateApiRun(pageContent, userMessage) {
-  try {
-    const runResponse = await sendApiRequest(
-      "POST",
-      `apps/${CONFIG.orgSlug}/${CONFIG.appSlug}/${CONFIG.version}/runs`,
-      {
-        inputs: {
-          page_content: pageContent,
-          question: userMessage,
-        },
-      }
-    );
-
-    console.log("API response:", runResponse);
-
-    if (runResponse && runResponse.runId) {
-      await pollRunStatus(runResponse.runId);
-      return runResponse;
-    } else {
-      throw new Error("No runId received in the response");
-    }
-  } catch (error) {
-    console.error("Error in initiateApiRun:", error);
-    throw error;
-  }
-}
-
-// Function to send API requests
-function sendApiRequest(method, endpoint, body = null) {
-  const options = {
-    method,
-    headers: {
-      Authorization: `Bearer ${CONFIG.apiKey}`,
-      "Content-Type": "application/json",
-    },
-  };
-
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-
-  return sendMessage({
-    type: "API_REQUEST",
-    url: `${CONFIG.apiBaseUrl}/${endpoint}`,
-    options,
-  });
-}
-function sendMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (response.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve(response.data);
-      }
-    });
-  });
-}
-
-async function convertTextToSpeech(text) {
-  const myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-  myHeaders.append("xi-api-key", CONFIG.elevenLabsApiKey);
-
-  const raw = JSON.stringify({
-    text: text,
-    voice_settings: {
-      stability: 0.1,
-      similarity_boost: 0.3,
-      style: 0.2,
-    },
-  });
-
-  const requestOptions = {
-    method: "POST",
-    headers: myHeaders,
-    body: raw,
-    redirect: "follow",
-  };
-
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${CONFIG.elevenLabsVoiceId}`,
-      requestOptions
-    );
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
-    addAudioMessageToChat(audioUrl, "bot");
-  } catch (error) {
-    console.error("Error in text-to-speech conversion:", error);
-    handleError("Error in text-to-speech conversion", error);
-  }
 }
